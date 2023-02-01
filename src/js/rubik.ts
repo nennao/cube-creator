@@ -3,16 +3,48 @@ import { mat4, vec3 } from "gl-matrix";
 import { Camera } from "./camera";
 import { Geometry } from "./geometry";
 import { SimpleShader } from "./shader";
-import { rad } from "./utils";
+import { handleButtonById, mR, rad, randInt, shuffle } from "./utils";
 
 type V3 = [number, number, number];
 
 type Side = 1 | -1;
 
+enum FaceId {
+  L = "L",
+  R = "R",
+  D = "D",
+  U = "U",
+  B = "B",
+  F = "F",
+}
+
 enum Axis {
   x = "x",
   y = "y",
   z = "z",
+}
+
+enum Level {
+  m1 = -1,
+  z0 = 0,
+  p1 = 1,
+}
+
+enum Dir {
+  ccw = 1,
+  cw = -1,
+}
+
+function getAxisVector(axis: Axis, s = 1): V3 {
+  return [axis == Axis.x ? s : 0, axis == Axis.y ? s : 0, axis == Axis.z ? s : 0];
+}
+
+function getFaceId(axis: Axis, side: Side): FaceId {
+  return {
+    x: { "-1": FaceId.L, "1": FaceId.R },
+    y: { "-1": FaceId.D, "1": FaceId.U },
+    z: { "-1": FaceId.B, "1": FaceId.F },
+  }[axis][side];
 }
 
 // prettier-ignore
@@ -52,6 +84,9 @@ class Face {
   private readonly gl: WebGL2RenderingContext;
   private readonly block: Block;
   private readonly root: Rubik;
+  readonly axis: Axis;
+  readonly side: Side;
+  readonly faceId: FaceId;
   private readonly vertices: number[];
   private readonly indices: number[];
   private readonly colors: number[];
@@ -62,15 +97,18 @@ class Face {
     return this._geometry;
   }
 
-  constructor(gl: WebGL2RenderingContext, block: Block, root: Rubik, axis: Axis, side: Side) {
+  constructor(gl: WebGL2RenderingContext, block: Block, root: Rubik, axis: Axis, side: Side, faceId?: FaceId) {
     this.gl = gl;
     this.block = block;
     this.root = root;
     const [v, i] = squareData(0.7, 0.5 + this.epsilon);
 
+    this.axis = axis;
+    this.side = side;
     this.vertices = this.orientFace(v, axis, side);
     this.indices = i;
-    this.colors = this.getFaceColor(axis, side);
+    this.faceId = faceId || getFaceId(axis, side);
+    this.colors = this.getFaceColor(this.faceId);
 
     this._geometry = new Geometry(gl, this.vertices, this.colors, this.indices);
   }
@@ -86,13 +124,14 @@ class Face {
     return res.flat();
   }
 
-  private getFaceColor(axis: Axis, side: Side) {
+  private getFaceColor(faceId: FaceId) {
+    // prettier-ignore
     const colorMap = {
-      x: { "-1": [0, 1, 1], "1": [1, 0, 0] },
-      y: { "-1": [1, 0, 1], "1": [0, 1, 0] },
-      z: { "-1": [1, 1, 0], "1": [0, 0, 1] },
+      [FaceId.L]: [0, 1, 1], [FaceId.R]: [1, 0, 0],
+      [FaceId.D]: [1, 0, 1], [FaceId.U]: [0, 1, 0],
+      [FaceId.B]: [1, 1, 0], [FaceId.F]: [0, 0, 1],
     };
-    const color = colorMap[axis][side];
+    const color = colorMap[faceId];
     return Array(this.vertices.length / 3)
       .fill(color)
       .flat();
@@ -106,8 +145,9 @@ class Face {
 class Block {
   private readonly gl: WebGL2RenderingContext;
   private readonly root: Rubik;
-  private readonly faces: Face[];
+  private faces: Face[];
   position: vec3;
+  private readonly spread = 1.1;
   private readonly vertices: number[];
   private readonly indices: number[];
   private readonly colors: number[];
@@ -149,6 +189,11 @@ class Block {
     this.gl.cullFace(this.gl.BACK);
   }
 
+  displayTransform() {
+    const spreadPos = vec3.scale(vec3.create(), this.position, this.spread);
+    return vec3.transformMat4(vec3.create(), spreadPos, mat4.create());
+  }
+
   private createFaces(): Face[] {
     const position = this.position;
     const faces: Face[] = [];
@@ -161,12 +206,59 @@ class Block {
   }
 
   private initPosition() {
-    const displayPosition = this.root.displayTransform(this.position);
+    const displayPosition = this.displayTransform();
     const _initPos = (entity: Block | Face) => {
       mat4.translate(entity.geometry.transform, mat4.create(), displayPosition);
     };
     _initPos(this);
     this.faces.forEach(_initPos);
+  }
+
+  private updatePosition(rotateFn: (pos: vec3) => vec3) {
+    const rotatedPos = rotateFn(this.position);
+    this.position = [mR(rotatedPos[0]), mR(rotatedPos[1]), mR(rotatedPos[2])];
+
+    this.geometry.transform = mat4.create();
+    this.updateFaces(rotateFn);
+
+    this.initPosition();
+  }
+
+  private updateFaces(rotateFn: (pos: vec3) => vec3) {
+    this.faces = this.faces.map((f) => {
+      const a = f.axis;
+      const s = f.side;
+      const facePos = Array.from(rotateFn(getAxisVector(a, s))).map((p, i) => [mR(p), i]);
+      for (let [p, i] of facePos) {
+        if (p) {
+          return new Face(this.gl, this, this.root, [Axis.x, Axis.y, Axis.z][i], p > 0 ? 1 : -1, f.faceId);
+        }
+      }
+      console.error("error rotating face:", a, s, facePos);
+      throw "error rotating face";
+    });
+  }
+
+  rotate(axis: Axis, dir: Dir, amt: number, isFinal: boolean) {
+    const axisV = getAxisVector(axis);
+
+    if (isFinal) {
+      const rotateFn = (pos: vec3) =>
+        ({
+          x: vec3.rotateX,
+          y: vec3.rotateY,
+          z: vec3.rotateZ,
+        }[axis](vec3.create(), pos, axisV, rad(90 * dir)));
+      this.updatePosition(rotateFn);
+    } else {
+      const angle = rad(amt * dir);
+      const rotation = mat4.rotate(mat4.create(), mat4.create(), angle, axisV);
+      const _rotate = (entity: Block | Face) => {
+        mat4.multiply(entity.geometry.transform, rotation, entity.geometry.transform);
+      };
+      _rotate(this);
+      this.faces.forEach(_rotate);
+    }
   }
 
   draw() {
@@ -184,12 +276,15 @@ export class Rubik {
   readonly shader: SimpleShader;
   private readonly changeWatcher: { val: any; get: () => any }[];
 
-  private readonly spread = 1.1;
+  private readonly speed = 180; // deg/s
+  private rotationQueue: [Axis, Level, Dir, number][] = [];
   private mouse: null | { x: number; y: number } = null;
 
   transform = mat4.create();
 
-  private readonly blocks: Block[];
+  private blocks: Block[];
+
+  private scrambling = false;
 
   constructor(gl: WebGL2RenderingContext, camera: Camera) {
     this.gl = gl;
@@ -202,10 +297,10 @@ export class Rubik {
 
     this.blocks = this.createBlocks();
     this.changeWatcher = this.initChangeWatcher();
+    this.initDOMInputs();
     this.handleInputEvents();
 
-    this.rotate(-45, [0, 1, 0]);
-    this.rotate(35, [1, 0, 0]);
+    this.initialPosition();
   }
 
   private createBlocks() {
@@ -230,14 +325,85 @@ export class Rubik {
     return getters.map((getter, i) => ({ val: i ? getter() : 1, get: getter }));
   }
 
+  private initDOMInputs() {
+    handleButtonById("scramble", "onclick", () => this.scramble());
+    handleButtonById("reset", "onclick", () => this.reset());
+  }
+
   private triggerRedraw() {
     this.changeWatcher[0].val = 1;
+  }
+
+  private queueRotation(axis: Axis, level: Level, dir: Dir) {
+    this.rotationQueue.push([axis, level, dir, 90]);
   }
 
   private rotate(angle: number, rotAxis: vec3) {
     const rotation = mat4.rotate(mat4.create(), mat4.create(), rad(angle), rotAxis);
     mat4.multiply(this.transform, rotation, this.transform);
     this.triggerRedraw();
+  }
+
+  private scramble() {
+    this.scrambling = true;
+
+    const levels = [Level.m1, Level.z0, Level.p1];
+    const dirs = [Dir.ccw, Dir.cw];
+    const randAxes = shuffle([Axis.x, Axis.y, Axis.z]);
+
+    for (let _ of Array(randInt(3) + 3)) {
+      for (let axis of randAxes) {
+        const level = levels[randInt(3)];
+        const dir = dirs[randInt(2)];
+        this.queueRotation(axis, level, dir);
+      }
+    }
+  }
+
+  private initialPosition() {
+    this.rotate(-45, [0, 1, 0]);
+    this.rotate(35, [1, 0, 0]);
+  }
+
+  private reset() {
+    this.rotationQueue = [];
+    this.scrambling = false;
+    this.transform = mat4.create();
+    this.blocks = this.createBlocks();
+    this.initialPosition();
+    this.triggerRedraw();
+  }
+
+  private runRotation(dt: number) {
+    if (this.rotationQueue.length) {
+      const angle = mR((this.scrambling ? 2 : 1) * this.speed * dt);
+      const [axis, level, dir, rem] = this.rotationQueue[0];
+      const amt = Math.min(angle, rem);
+      const newRem = rem - angle;
+      const isFinal = newRem <= 0;
+
+      this.rotateSlice(axis, level, dir, amt, isFinal);
+
+      if (isFinal) {
+        this.rotationQueue.shift();
+      } else {
+        this.rotationQueue[0][3] = newRem;
+      }
+
+      if (!this.rotationQueue.length && this.scrambling) {
+        this.scrambling = false;
+      }
+      this.triggerRedraw();
+    }
+  }
+
+  private rotateSlice(axis: Axis, level: Level, dir: Dir, amt: number, isFinal: boolean) {
+    const axisId = ["x", "y", "z"].indexOf(axis);
+    for (let block of this.blocks) {
+      if (block.position[axisId] == level) {
+        block.rotate(axis, dir, amt, isFinal);
+      }
+    }
   }
 
   private handleInputEvents() {
@@ -266,11 +432,6 @@ export class Rubik {
     });
   }
 
-  displayTransform(positions: vec3) {
-    const spreadPos = vec3.scale(vec3.create(), positions, this.spread);
-    return vec3.transformMat4(vec3.create(), spreadPos, this.transform);
-  }
-
   private drawBlocks() {
     for (let block of this.blocks) {
       block.draw();
@@ -285,7 +446,7 @@ export class Rubik {
 
   private uiWatch() {
     for (let watcher of this.changeWatcher) {
-      if (watcher.val !== watcher.get()) {
+      if (watcher.val != watcher.get()) {
         watcher.val = watcher.get();
         return true;
       }
@@ -294,6 +455,9 @@ export class Rubik {
   }
 
   render(t: number) {
+    const dt = t - this.clock;
+    this.runRotation(dt);
+
     const play = this.uiWatch();
 
     this.clock = t;

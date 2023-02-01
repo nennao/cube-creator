@@ -85,7 +85,7 @@ class ShaderBase {
 
   lookupAttribLocation(name: string): GLint | null {
     const loc = this.attribLocations[name];
-    if (loc !== undefined) {
+    if (loc != undefined) {
       return loc;
     }
     return null;

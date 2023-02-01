@@ -25,3 +25,14 @@ export function shuffle<T>(array: T[], inPlace = false): T[] {
   }
   return array;
 }
+
+type ButtonEvents = "onclick";
+
+export function handleButtonById(id: string, type: ButtonEvents, listener: () => void) {
+  const el = document.getElementById(id);
+  if (el instanceof HTMLButtonElement) {
+    el[type] = listener;
+  } else {
+    console.warn(`cant find button with id ${id}`);
+  }
+}

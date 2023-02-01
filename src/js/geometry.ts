@@ -8,7 +8,7 @@ export class Geometry {
   private readonly positions: Buffer;
   private readonly colors: Buffer;
   private readonly indices: IndexBuffer;
-  readonly transform: mat4;
+  transform: mat4;
 
   constructor(gl: WebGL2RenderingContext, positions: number[], colors: number[], indices: number[]) {
     this.gl = gl;

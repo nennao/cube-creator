@@ -7,3 +7,14 @@ body {
   width: 100vw;
   height: 100vh;
 }
+
+#controlsCont {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  padding: 20px;
+}
+#controlsCont button {
+  font-size: large;
+  padding: 4px 12px;
+}
