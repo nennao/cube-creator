@@ -3,9 +3,17 @@ import { mat4, vec3 } from "gl-matrix";
 import { Camera } from "./camera";
 import { Geometry } from "./geometry";
 import { SimpleShader } from "./shader";
-import { handleButtonById, mR, rad, randInt, shuffle } from "./utils";
+// prettier-ignore
+import {
+  getTriangles, handleButtonById, handleInputById, mR, rad, randInt, rayCubeSphere, rayTriangle, shuffle, targetListener,
+  transformTriangle, TriVec3,
+} from "./utils";
 
 type V3 = [number, number, number];
+
+function vec3ToV3(v: vec3): V3 {
+  return [v[0], v[1], v[2]];
+}
 
 type Side = 1 | -1;
 
@@ -47,11 +55,32 @@ function getFaceId(axis: Axis, side: Side): FaceId {
   }[axis][side];
 }
 
+function orientFace(vertices: V3[], axis: Axis, side: Side): V3[] {
+  if (axis == Axis.z && side == 1) {
+    return vertices;
+  }
+  const rotateFn: (a: vec3, b: vec3, c: vec3, d: number) => vec3 = axis == Axis.y ? vec3.rotateX : vec3.rotateY;
+  const angle = axis == Axis.z ? 180 : (axis == Axis.x && side == -1) || (axis == Axis.y && side == 1) ? -90 : 90;
+
+  return vertices.map((v) => vec3ToV3(rotateFn(vec3.create(), v, [0, 0, 0], rad(angle))));
+}
+
+function getFaceColors(faceId: FaceId, vertexCount: number) {
+  // prettier-ignore
+  const colorMap = {
+    [FaceId.L]: [0, 1, 1], [FaceId.R]: [1, 0, 0],
+    [FaceId.D]: [1, 0, 1], [FaceId.U]: [0, 1, 0],
+    [FaceId.B]: [1, 1, 0], [FaceId.F]: [0, 0, 1],
+  };
+  const color = colorMap[faceId];
+  return Array(vertexCount).fill(color).flat();
+}
+
 // prettier-ignore
-const cubeData = () => {
-  const vertices = [
-    -0.5, -0.5,  0.5,   0.5, -0.5,  0.5,   0.5,  0.5,  0.5,  -0.5,  0.5,  0.5,
-    -0.5, -0.5, -0.5,  -0.5,  0.5, -0.5,   0.5,  0.5, -0.5,   0.5, -0.5, -0.5,
+const cubeData = (): [V3[], number[]] => {
+  const vertices: V3[] = [
+    [-0.5, -0.5,  0.5],  [ 0.5, -0.5,  0.5],   [0.5,  0.5,  0.5],  [-0.5,  0.5,  0.5],
+    [-0.5, -0.5, -0.5],  [-0.5,  0.5, -0.5],   [0.5,  0.5, -0.5],  [ 0.5, -0.5, -0.5],
   ];
   const indices = [
     0, 1, 2,    0, 2, 3,
@@ -65,9 +94,9 @@ const cubeData = () => {
 };
 
 // prettier-ignore
-const squareData = (s = 1, z = 0):[V3[],number[]] => {
+const squareData = (s = 1, z = 0): [V3[], number[]] => {
   const r = 0.5 * s;
-  const vertices:V3[] = [
+  const vertices: V3[] = [
     [-r, -r, z],
     [ r, -r, z],
     [ r,  r, z],
@@ -78,6 +107,24 @@ const squareData = (s = 1, z = 0):[V3[],number[]] => {
   ]
   return [vertices, indices];
 };
+
+class FaceBounds {
+  private readonly root: Rubik;
+  private readonly _geometry: Geometry;
+
+  get geometry() {
+    return this._geometry;
+  }
+
+  constructor(geo: Geometry, root: Rubik) {
+    this.root = root;
+    this._geometry = geo;
+  }
+
+  draw() {
+    this.geometry.draw(this.root.shader);
+  }
+}
 
 class Face {
   private readonly epsilon = 0.01;
@@ -105,36 +152,17 @@ class Face {
 
     this.axis = axis;
     this.side = side;
-    this.vertices = this.orientFace(v, axis, side);
+    this.vertices = orientFace(v, axis, side).flat();
     this.indices = i;
     this.faceId = faceId || getFaceId(axis, side);
-    this.colors = this.getFaceColor(this.faceId);
+    this.colors = getFaceColors(this.faceId, this.vertices.length / 3);
 
     this._geometry = new Geometry(gl, this.vertices, this.colors, this.indices);
+    this.initPosition();
   }
 
-  private orientFace(vertices: V3[], axis: Axis, side: Side) {
-    if (axis == Axis.z && side == 1) {
-      return vertices.flat();
-    }
-    const rotateFn: (a: vec3, b: vec3, c: vec3, d: number) => vec3 = axis == Axis.y ? vec3.rotateX : vec3.rotateY;
-    const angle = axis == Axis.z ? 180 : (axis == Axis.x && side == -1) || (axis == Axis.y && side == 1) ? -90 : 90;
-
-    const res = vertices.map((v) => Array.from(rotateFn(vec3.create(), v, [0, 0, 0], rad(angle))));
-    return res.flat();
-  }
-
-  private getFaceColor(faceId: FaceId) {
-    // prettier-ignore
-    const colorMap = {
-      [FaceId.L]: [0, 1, 1], [FaceId.R]: [1, 0, 0],
-      [FaceId.D]: [1, 0, 1], [FaceId.U]: [0, 1, 0],
-      [FaceId.B]: [1, 1, 0], [FaceId.F]: [0, 0, 1],
-    };
-    const color = colorMap[faceId];
-    return Array(this.vertices.length / 3)
-      .fill(color)
-      .flat();
+  private initPosition() {
+    mat4.translate(this.geometry.transform, mat4.create(), this.block.displayPosition);
   }
 
   draw() {
@@ -145,21 +173,25 @@ class Face {
 class Block {
   private readonly gl: WebGL2RenderingContext;
   private readonly root: Rubik;
-  private faces: Face[];
+  faces: Face[];
   position: vec3;
-  private readonly spread = 1.1;
   private readonly vertices: number[];
   private readonly indices: number[];
   private readonly colors: number[];
   private readonly blockColor = [0.1, 0.1, 0.1];
+  private _boundingBox: TriVec3[] = [];
 
   private readonly _geometry: Geometry;
+
+  get boundingBox(): TriVec3[] {
+    return this._boundingBox.map((t) => transformTriangle(t, this.root.transform));
+  }
 
   get geometry() {
     return this._geometry;
   }
 
-  constructor(gl: WebGL2RenderingContext, root: Rubik, position: vec3) {
+  constructor(gl: WebGL2RenderingContext, root: Rubik, position: V3) {
     this.gl = gl;
     this.initGL();
 
@@ -167,7 +199,7 @@ class Block {
     this.position = position;
 
     const [v, i] = cubeData();
-    this.vertices = v;
+    this.vertices = v.flat();
     this.indices = i;
     this.colors = Array(this.vertices.length / 3 / 2)
       .fill(this.blockColor)
@@ -189,9 +221,9 @@ class Block {
     this.gl.cullFace(this.gl.BACK);
   }
 
-  displayTransform() {
-    const spreadPos = vec3.scale(vec3.create(), this.position, this.spread);
-    return vec3.transformMat4(vec3.create(), spreadPos, mat4.create());
+  get displayPosition(): V3 {
+    const { spread } = this.root;
+    return [this.position[0] * spread, this.position[1] * spread, this.position[2] * spread];
   }
 
   private createFaces(): Face[] {
@@ -206,12 +238,12 @@ class Block {
   }
 
   private initPosition() {
-    const displayPosition = this.displayTransform();
-    const _initPos = (entity: Block | Face) => {
-      mat4.translate(entity.geometry.transform, mat4.create(), displayPosition);
-    };
-    _initPos(this);
-    this.faces.forEach(_initPos);
+    mat4.translate(this.geometry.transform, mat4.create(), this.displayPosition);
+
+    const [v, i] = cubeData();
+
+    const vertices = v.map((bVertex) => vec3ToV3(vec3.add(vec3.create(), bVertex, this.displayPosition)));
+    this._boundingBox = getTriangles(vertices, i);
   }
 
   private updatePosition(rotateFn: (pos: vec3) => vec3) {
@@ -282,9 +314,26 @@ export class Rubik {
 
   transform = mat4.create();
 
+  readonly spread = 2;
   private blocks: Block[];
 
   private scrambling = false;
+  private showBounding = true;
+
+  private readonly boundingBox: [Axis, Side, TriVec3[]][];
+  private readonly bounds: FaceBounds[];
+
+  get cubeR() {
+    return 0.5 * (3 + 2 * (this.spread - 1));
+  }
+
+  get boundingPlanes(): [Axis, Side, TriVec3[]][] {
+    return this.boundingBox.map(([axis, side, triangles]) => [
+      axis,
+      side,
+      triangles.map((t) => transformTriangle(t, this.transform)),
+    ]);
+  }
 
   constructor(gl: WebGL2RenderingContext, camera: Camera) {
     this.gl = gl;
@@ -294,6 +343,10 @@ export class Rubik {
 
     this.camera = camera;
     this.shader = new SimpleShader(gl);
+
+    const [bBox, bBounds] = this.getBoundingBox();
+    this.boundingBox = bBox;
+    this.bounds = bBounds;
 
     this.blocks = this.createBlocks();
     this.changeWatcher = this.initChangeWatcher();
@@ -316,6 +369,26 @@ export class Rubik {
     return blocks;
   }
 
+  private getBoundingBox(): [[Axis, Side, TriVec3[]][], FaceBounds[]] {
+    const res = [];
+    const bounds = [];
+    const { cubeR } = this;
+
+    for (let axis of [Axis.x, Axis.y, Axis.z]) {
+      for (let side of [-1, 1] as const) {
+        const faceId = getFaceId(axis, side);
+        const [v, i] = squareData(cubeR * 2, cubeR);
+        const vertices = orientFace(v, axis, side);
+        const triangles = getTriangles(vertices, i);
+        const colors = getFaceColors(faceId, vertices.length);
+        const x: [Axis, Side, TriVec3[]] = [axis, side, triangles];
+        res.push(x);
+        bounds.push(new FaceBounds(new Geometry(this.gl, vertices.flat(), colors, i), this));
+      }
+    }
+    return [res, bounds];
+  }
+
   private initChangeWatcher() {
     const getters = [
       () => 0, // for dom ui
@@ -326,6 +399,15 @@ export class Rubik {
   }
 
   private initDOMInputs() {
+    handleInputById(
+      "boundsCheck",
+      this.showBounding,
+      "onclick",
+      targetListener((t) => {
+        this.showBounding = t.checked;
+        this.triggerRedraw();
+      })
+    );
     handleButtonById("scramble", "onclick", () => this.scramble());
     handleButtonById("reset", "onclick", () => this.reset());
   }
@@ -406,6 +488,73 @@ export class Rubik {
     }
   }
 
+  private displayTransform(position: vec3) {
+    return vec3.transformMat4(vec3.create(), position, this.transform);
+  }
+
+  private findClickedBlock(x: number, y: number): [Axis | null, Side | null, Block | null] {
+    let closestDist = Infinity;
+    let clickedAxis: null | Axis = null;
+    let clickedSide: null | Side = null;
+    let closestBlock: null | Block = null;
+
+    const pNear = this.camera.position;
+    const pFar = this.camera.getPickedVector(x, y);
+
+    if (!rayCubeSphere(pNear, pFar, [0, 0, 0], this.cubeR * 2)) {
+      return [null, null, null];
+    }
+
+    let cubeDist = Infinity;
+    let clickedPlane: null | [Axis, Side] = null;
+
+    for (let [axis, side, bBox] of this.boundingPlanes) {
+      for (let triangle of bBox) {
+        const intersection = rayTriangle(pNear, pFar, triangle);
+        if (!intersection) {
+          continue;
+        }
+        const dist = vec3.distance(intersection, this.camera.position);
+        if (dist < cubeDist) {
+          cubeDist = dist;
+          clickedPlane = [axis, side];
+        }
+      }
+    }
+
+    if (!clickedPlane) {
+      return [null, null, null];
+    }
+
+    const [axis, side] = clickedPlane;
+    clickedAxis = axis;
+    clickedSide = side;
+    const axisId = ["x", "y", "z"].indexOf(axis);
+
+    for (let block of this.blocks) {
+      if (block.position[axisId] != side) {
+        continue;
+      }
+      if (!rayCubeSphere(pNear, pFar, this.displayTransform(block.displayPosition), 1)) {
+        continue;
+      }
+
+      for (let triangle of block.boundingBox) {
+        const intersection = rayTriangle(pNear, pFar, triangle);
+        if (!intersection) {
+          continue;
+        }
+        const dist = vec3.distance(intersection, this.camera.position);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestBlock = block;
+        }
+      }
+    }
+
+    return [clickedAxis, clickedSide, closestBlock];
+  }
+
   private handleInputEvents() {
     const canvas = this.gl.canvas;
 
@@ -425,6 +574,8 @@ export class Rubik {
 
     canvas.addEventListener("pointerdown", (e) => {
       if (e.buttons == 1) {
+        const [clickedAxis, clickedSide, closestBlock] = this.findClickedBlock(e.clientX, e.clientY);
+        console.log(closestBlock ? clickedAxis! + clickedSide! : "no face", closestBlock ? closestBlock.position : "");
         this.mouse = { x: e.clientX, y: e.clientY };
         window.addEventListener("pointermove", mousedownRotateHandler);
         window.addEventListener("pointerup", mouseupRotateHandler);
@@ -433,8 +584,16 @@ export class Rubik {
   }
 
   private drawBlocks() {
+    this.shader.setUniform1f("u_Opacity", 1);
     for (let block of this.blocks) {
       block.draw();
+    }
+  }
+
+  private drawBounds() {
+    this.shader.setUniform1f("u_Opacity", 0.25);
+    for (let bound of this.bounds) {
+      bound.draw();
     }
   }
 
@@ -442,6 +601,9 @@ export class Rubik {
     this.shader.bind(this.camera);
     this.shader.setUniformMatrix4fv("u_RubikMatrix", this.transform);
     this.drawBlocks();
+    if (this.showBounding) {
+      this.drawBounds();
+    }
   }
 
   private uiWatch() {

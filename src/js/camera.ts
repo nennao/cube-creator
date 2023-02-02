@@ -9,14 +9,14 @@ export class Camera {
 
   private aspect = 1;
   private readonly fov = rad(45);
-  private readonly zNear = 0.1;
-  private readonly zFar = 100.0;
+  private readonly zNear = 1;
+  private readonly zFar = 50.0;
 
   readonly projectionMatrix = mat4.create();
   readonly viewMatrix = mat4.create();
 
   private distance = 15;
-  private position: vec3 = [0.0, 0.0, this.distance];
+  position: vec3 = [0.0, 0.0, this.distance];
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;

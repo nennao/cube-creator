@@ -1,8 +1,14 @@
+#version 300 es
+
 precision highp float;
 
-varying vec3 v_Color;
+uniform float u_Opacity;
+
+in vec3 v_Color;
+
+out vec4 fragColor;
 
 
 void main() {
-    gl_FragColor = vec4(v_Color, 1.0);
+    fragColor = vec4(v_Color, u_Opacity);
 }

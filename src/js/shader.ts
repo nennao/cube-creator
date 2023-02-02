@@ -121,6 +121,10 @@ class ShaderBase {
     this.setUniformMatrix4fv("u_ViewMatrix", camera.viewMatrix);
   }
 
+  setUniform1f(name: string, val: number) {
+    this.gl.uniform1f(this.uniformLocations[name], val);
+  }
+
   setUniformMatrix4fv(name: string, val: mat4) {
     this.gl.uniformMatrix4fv(this.uniformLocations[name], false, val);
   }
