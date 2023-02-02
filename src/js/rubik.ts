@@ -3,11 +3,8 @@ import { mat4, vec3 } from "gl-matrix";
 import { Camera } from "./camera";
 import { Geometry } from "./geometry";
 import { SimpleShader } from "./shader";
-// prettier-ignore
-import {
-  getTriangles, handleButtonById, handleInputById, mR, rad, randInt, rayCubeSphere, rayTriangle, shuffle, targetListener,
-  transformTriangle, TriVec3,
-} from "./utils";
+import { clamp, mR, rad, randInt, TriVec3 } from "./utils";
+import * as utils from "./utils";
 
 type V3 = [number, number, number];
 
@@ -184,7 +181,7 @@ class Block {
   private readonly _geometry: Geometry;
 
   get boundingBox(): TriVec3[] {
-    return this._boundingBox.map((t) => transformTriangle(t, this.root.transform));
+    return this._boundingBox.map((t) => utils.transformTriangle(t, this.root.transform));
   }
 
   get geometry() {
@@ -243,7 +240,7 @@ class Block {
     const [v, i] = cubeData();
 
     const vertices = v.map((bVertex) => vec3ToV3(vec3.add(vec3.create(), bVertex, this.displayPosition)));
-    this._boundingBox = getTriangles(vertices, i);
+    this._boundingBox = utils.getTriangles(vertices, i);
   }
 
   private updatePosition(rotateFn: (pos: vec3) => vec3) {
@@ -308,17 +305,17 @@ export class Rubik {
   readonly shader: SimpleShader;
   private readonly changeWatcher: { val: any; get: () => any }[];
 
-  private readonly speed = 180; // deg/s
-  private rotationQueue: [Axis, Level, Dir, number][] = [];
+  private readonly speed = 2; // turns/s
+  private rotationQueue: [Axis, Level, Dir, number, number][] = [];
   private mouse: null | { x: number; y: number } = null;
 
   transform = mat4.create();
 
-  readonly spread = 2;
+  readonly spread = 1.1;
   private blocks: Block[];
 
   private scrambling = false;
-  private showBounding = true;
+  private showBounding = false;
 
   private readonly boundingBox: [Axis, Side, TriVec3[]][];
   private readonly bounds: FaceBounds[];
@@ -331,7 +328,7 @@ export class Rubik {
     return this.boundingBox.map(([axis, side, triangles]) => [
       axis,
       side,
-      triangles.map((t) => transformTriangle(t, this.transform)),
+      triangles.map((t) => utils.transformTriangle(t, this.transform)),
     ]);
   }
 
@@ -379,7 +376,7 @@ export class Rubik {
         const faceId = getFaceId(axis, side);
         const [v, i] = squareData(cubeR * 2, cubeR);
         const vertices = orientFace(v, axis, side);
-        const triangles = getTriangles(vertices, i);
+        const triangles = utils.getTriangles(vertices, i);
         const colors = getFaceColors(faceId, vertices.length);
         const x: [Axis, Side, TriVec3[]] = [axis, side, triangles];
         res.push(x);
@@ -399,17 +396,17 @@ export class Rubik {
   }
 
   private initDOMInputs() {
-    handleInputById(
+    utils.handleInputById(
       "boundsCheck",
       this.showBounding,
       "onclick",
-      targetListener((t) => {
+      utils.targetListener((t) => {
         this.showBounding = t.checked;
         this.triggerRedraw();
       })
     );
-    handleButtonById("scramble", "onclick", () => this.scramble());
-    handleButtonById("reset", "onclick", () => this.reset());
+    utils.handleButtonById("scramble", "onclick", () => this.scramble());
+    utils.handleButtonById("reset", "onclick", () => this.reset());
   }
 
   private triggerRedraw() {
@@ -417,7 +414,7 @@ export class Rubik {
   }
 
   private queueRotation(axis: Axis, level: Level, dir: Dir) {
-    this.rotationQueue.push([axis, level, dir, 90]);
+    this.rotationQueue.push([axis, level, dir, 0, 0]);
   }
 
   private rotate(angle: number, rotAxis: vec3) {
@@ -431,7 +428,7 @@ export class Rubik {
 
     const levels = [Level.m1, Level.z0, Level.p1];
     const dirs = [Dir.ccw, Dir.cw];
-    const randAxes = shuffle([Axis.x, Axis.y, Axis.z]);
+    const randAxes = utils.shuffle([Axis.x, Axis.y, Axis.z]);
 
     for (let _ of Array(randInt(3) + 3)) {
       for (let axis of randAxes) {
@@ -458,18 +455,20 @@ export class Rubik {
 
   private runRotation(dt: number) {
     if (this.rotationQueue.length) {
-      const angle = mR((this.scrambling ? 2 : 1) * this.speed * dt);
-      const [axis, level, dir, rem] = this.rotationQueue[0];
-      const amt = Math.min(angle, rem);
-      const newRem = rem - angle;
-      const isFinal = newRem <= 0;
+      const [axis, level, dir, elapsedA, elapsedT] = this.rotationQueue[0];
+      const fullT = (this.scrambling ? 0.5 : 1) / this.speed;
+      const t = elapsedT + dt;
+      const targetA = Math.max(clamp(utils.easeInOut(t, fullT, 90, 2.25), 0, 90), elapsedA);
+      const amt = Math.max(0, targetA - elapsedA);
+      const isFinal = t >= fullT;
 
       this.rotateSlice(axis, level, dir, amt, isFinal);
 
       if (isFinal) {
         this.rotationQueue.shift();
       } else {
-        this.rotationQueue[0][3] = newRem;
+        this.rotationQueue[0][3] = targetA;
+        this.rotationQueue[0][4] = t;
       }
 
       if (!this.rotationQueue.length && this.scrambling) {
@@ -501,7 +500,7 @@ export class Rubik {
     const pNear = this.camera.position;
     const pFar = this.camera.getPickedVector(x, y);
 
-    if (!rayCubeSphere(pNear, pFar, [0, 0, 0], this.cubeR * 2)) {
+    if (!utils.rayCubeSphere(pNear, pFar, [0, 0, 0], this.cubeR * 2)) {
       return [null, null, null];
     }
 
@@ -510,7 +509,7 @@ export class Rubik {
 
     for (let [axis, side, bBox] of this.boundingPlanes) {
       for (let triangle of bBox) {
-        const intersection = rayTriangle(pNear, pFar, triangle);
+        const intersection = utils.rayTriangle(pNear, pFar, triangle);
         if (!intersection) {
           continue;
         }
@@ -535,12 +534,12 @@ export class Rubik {
       if (block.position[axisId] != side) {
         continue;
       }
-      if (!rayCubeSphere(pNear, pFar, this.displayTransform(block.displayPosition), 1)) {
+      if (!utils.rayCubeSphere(pNear, pFar, this.displayTransform(block.displayPosition), 1)) {
         continue;
       }
 
       for (let triangle of block.boundingBox) {
-        const intersection = rayTriangle(pNear, pFar, triangle);
+        const intersection = utils.rayTriangle(pNear, pFar, triangle);
         if (!intersection) {
           continue;
         }

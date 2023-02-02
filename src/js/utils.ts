@@ -129,3 +129,10 @@ export function rayTriangle(p1: vec3, p2: vec3, triangle: TriVec3) {
   }
   return null;
 }
+
+export function easeInOut(x: number, xScale = 1, yScale = 1, alpha = 2) {
+  x = x / xScale;
+  const xa = x ** alpha;
+  const x1a = (1 - x) ** alpha;
+  return (yScale * xa) / (xa + x1a);
+}
