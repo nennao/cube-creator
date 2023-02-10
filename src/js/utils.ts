@@ -8,12 +8,28 @@ export function rad(deg: number) {
   return (deg * Math.PI) / 180;
 }
 
+export function deg(rad: number) {
+  return (rad * 180) / Math.PI;
+}
+
+export function acosC(val: number) {
+  return Math.acos(clamp(val, -1, 1));
+}
+
 export function randInt(x: number) {
   return Math.floor(Math.random() * x);
 }
 
 export function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
+}
+
+export function min<T>(a: T[], key: (k: T) => number) {
+  return a.reduce((x, y) => (key(x) < key(y) ? x : y));
+}
+
+export function max<T>(a: T[], key: (k: T) => number) {
+  return a.reduce((x, y) => (key(x) > key(y) ? x : y));
 }
 
 export function shuffle<T>(array: T[], inPlace = false): T[] {
@@ -128,6 +144,110 @@ export function rayTriangle(p1: vec3, p2: vec3, triangle: TriVec3) {
     return vec3.add(vec3.create(), p1, vec3.scale(vec3.create(), dir, t));
   }
   return null;
+}
+
+export function rayPlaneT(p1: vec3, pDir: vec3, center: vec3, normal: vec3) {
+  const EPSILON = 0.0000001;
+
+  const denom = vec3.dot(pDir, normal);
+
+  if (Math.abs(denom) > EPSILON) {
+    return vec3.dot(vec3.subtract(vec3.create(), center, p1), normal) / denom;
+  }
+  return -1;
+}
+
+export function rayPlane(p1: vec3, p2: vec3, center: vec3, normal: vec3) {
+  const EPSILON = 0.0000001;
+
+  const pDir = vec3.subtract(vec3.create(), p2, p1);
+  vec3.normalize(pDir, pDir);
+
+  const t = rayPlaneT(p1, pDir, center, normal);
+  if (t > EPSILON) {
+    return vec3.add(vec3.create(), p1, vec3.scale(vec3.create(), pDir, t));
+  }
+  return null;
+}
+
+export type ShallowNormalsInfo = {
+  normal: vec3;
+  normal1: vec3;
+  normal2: vec3;
+  a1: number;
+  a2: number;
+  rotAxis: vec3;
+  cameraDir: vec3;
+  prev: vec3;
+  prevDir: vec3;
+};
+
+export function rayShallowPlane(p1: vec3, p2: vec3, center: vec3, shallowNormals: ShallowNormalsInfo) {
+  const EPSILON = 0.0000001;
+  const { normal1, normal2, a1, a2, rotAxis } = shallowNormals;
+
+  const pDir = vec3.subtract(vec3.create(), p2, p1);
+  vec3.normalize(pDir, pDir);
+
+  let t1 = rayPlaneT(p1, pDir, center, normal1);
+  let t2 = rayPlaneT(p1, pDir, center, normal2);
+
+  if (!(t1 > EPSILON || t2 > EPSILON)) {
+    console.warn("no ray plane (shallow) intersection");
+    return null;
+  }
+
+  t1 = t1 > EPSILON ? t1 : Infinity;
+  t2 = t2 > EPSILON ? t2 : Infinity;
+
+  const [t, n, angle] = t1 < t2 ? [t1, normal1, -1 * a1] : [t2, normal2, -1 * a2];
+
+  const planeCamDirAdjust = vec3.cross(vec3.create(), n, [0, 0, 1]);
+  vec3.cross(planeCamDirAdjust, planeCamDirAdjust, n);
+  vec3.normalize(planeCamDirAdjust, planeCamDirAdjust);
+  vec3.scale(planeCamDirAdjust, planeCamDirAdjust, 0.5);
+
+  const intersection = vec3.add(vec3.create(), p1, vec3.scale(vec3.create(), pDir, t));
+  vec3.add(intersection, intersection, planeCamDirAdjust);
+
+  const intersectionDir = vec3.subtract(vec3.create(), intersection, center);
+
+  const adjusted = vec3.transformMat4(
+    vec3.create(),
+    intersectionDir,
+    mat4.fromRotation(mat4.create(), rad(angle), rotAxis)
+  );
+  vec3.add(adjusted, adjusted, center);
+  return adjusted;
+}
+
+export function adjustMovePlaneCamAngle(
+  normal: vec3,
+  cameraDir: vec3
+): { normal: vec3; shallowNormals?: ShallowNormalsInfo } {
+  const angle = deg(acosC(vec3.dot(normal, cameraDir)));
+  const isObtuse = angle > 90;
+  const acute = isObtuse ? 180 - angle : angle;
+
+  const rotAxis = vec3.cross(vec3.create(), cameraDir, normal);
+  vec3.normalize(rotAxis, rotAxis);
+
+  const getNormal = (a: number) =>
+    vec3.transformMat4(vec3.create(), normal, mat4.fromRotation(mat4.create(), rad(a), rotAxis));
+
+  if (acute >= 85) {
+    const [a1, a2] = [30, -30];
+    const [normal1, normal2] = [getNormal(a1), getNormal(a2)];
+    const [prev, prevDir] = [vec3.create(), vec3.create()];
+    return { normal, shallowNormals: { normal, normal1, a1, normal2, a2, rotAxis, cameraDir, prev, prevDir } };
+  }
+
+  if (acute <= 45) {
+    return { normal };
+  }
+
+  const angleDiff = (isObtuse ? 1 : -1) * (acute - (11.25 + 0.75 * acute));
+  return { normal: getNormal(angleDiff) };
 }
 
 export function easeInOut(x: number, xScale = 1, yScale = 1, alpha = 2) {

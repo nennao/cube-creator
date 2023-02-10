@@ -15,7 +15,7 @@ export class Camera {
   readonly projectionMatrix = mat4.create();
   readonly viewMatrix = mat4.create();
 
-  private distance = 15;
+  distance = 15;
   position: vec3 = [0.0, 0.0, this.distance];
 
   constructor(gl: WebGL2RenderingContext) {

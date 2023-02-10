@@ -1,10 +1,12 @@
-import { mat4, vec3 } from "gl-matrix";
+import { mat4, quat, vec2, vec3 } from "gl-matrix";
 
 import { Camera } from "./camera";
 import { Geometry } from "./geometry";
 import { SimpleShader } from "./shader";
-import { clamp, mR, rad, randInt, TriVec3 } from "./utils";
 import * as utils from "./utils";
+import { acosC, clamp, deg, max, min, mR, rad, randInt, ShallowNormalsInfo, TriVec3 } from "./utils";
+
+const EPSILON = 0.0000001;
 
 type V3 = [number, number, number];
 
@@ -42,6 +44,12 @@ enum Dir {
 
 function getAxisVector(axis: Axis, s = 1): V3 {
   return [axis == Axis.x ? s : 0, axis == Axis.y ? s : 0, axis == Axis.z ? s : 0];
+}
+
+function getAxisAndSide(v: vec3): [Axis, Side] {
+  const v2 = vec3ToV3(v).map((val, i) => [val, i]);
+  const [val, idx] = max(v2, (k) => Math.abs(k[0]));
+  return [[Axis.x, Axis.y, Axis.z][idx], val > 0 ? 1 : -1];
 }
 
 function getFaceId(axis: Axis, side: Side): FaceId {
@@ -103,6 +111,40 @@ const squareData = (s = 1, z = 0): [V3[], number[]] => {
     0, 1, 2,    0, 2, 3,
   ]
   return [vertices, indices];
+};
+
+type ClickedInfo = {
+  axis: Axis;
+  side: Side;
+  block: Block;
+  p: vec3;
+  normal: vec3;
+  center: vec3;
+};
+
+type MoveInfo = {
+  currAngle: number;
+  level: Level;
+  normal: vec3;
+  center: vec3;
+  blockDir: vec3;
+  shallowNormals?: ShallowNormalsInfo;
+};
+
+type MovedInfo = {
+  axis: Axis;
+  level: Level;
+  side: Side;
+};
+
+type RotQueueItem = {
+  axis: Axis;
+  level: Level;
+  dir: Dir;
+  elapsedA: number;
+  elapsedT: number;
+  turns: number;
+  reverse?: boolean;
 };
 
 class FaceBounds {
@@ -190,7 +232,6 @@ class Block {
 
   constructor(gl: WebGL2RenderingContext, root: Rubik, position: V3) {
     this.gl = gl;
-    this.initGL();
 
     this.root = root;
     this.position = position;
@@ -210,12 +251,6 @@ class Block {
     this._geometry = new Geometry(gl, this.vertices, this.colors, this.indices);
     this.faces = this.createFaces();
     this.initPosition();
-  }
-
-  private initGL() {
-    this.gl.enable(this.gl.DEPTH_TEST);
-    this.gl.depthFunc(this.gl.LEQUAL);
-    this.gl.cullFace(this.gl.BACK);
   }
 
   get displayPosition(): V3 {
@@ -268,7 +303,7 @@ class Block {
     });
   }
 
-  rotate(axis: Axis, dir: Dir, amt: number, isFinal: boolean) {
+  rotate(axis: Axis, dir: Dir, amt: number, isFinal: boolean, turns: number) {
     const axisV = getAxisVector(axis);
 
     if (isFinal) {
@@ -277,11 +312,11 @@ class Block {
           x: vec3.rotateX,
           y: vec3.rotateY,
           z: vec3.rotateZ,
-        }[axis](vec3.create(), pos, axisV, rad(90 * dir)));
+        }[axis](vec3.create(), pos, axisV, rad(90 * dir * turns)));
       this.updatePosition(rotateFn);
     } else {
       const angle = rad(amt * dir);
-      const rotation = mat4.rotate(mat4.create(), mat4.create(), angle, axisV);
+      const rotation = mat4.fromRotation(mat4.create(), angle, axisV);
       const _rotate = (entity: Block | Face) => {
         mat4.multiply(entity.geometry.transform, rotation, entity.geometry.transform);
       };
@@ -306,11 +341,11 @@ export class Rubik {
   private readonly changeWatcher: { val: any; get: () => any }[];
 
   private readonly speed = 2; // turns/s
-  private rotationQueue: [Axis, Level, Dir, number, number][] = [];
-  private mouse: null | { x: number; y: number } = null;
+  private rotationQueue: RotQueueItem[] = [];
 
   transform = mat4.create();
 
+  private readonly animAlpha = 2.25;
   readonly spread = 1.1;
   private blocks: Block[];
 
@@ -319,6 +354,15 @@ export class Rubik {
 
   private readonly boundingBox: [Axis, Side, TriVec3[]][];
   private readonly bounds: FaceBounds[];
+
+  private mouse0 = { x: 0, y: 0 };
+  private mouse = { x: 0, y: 0 };
+
+  private manualBlockMoving = false;
+
+  private moveBlockInfo: null | MoveInfo = null;
+  private movedBlockInfo: null | MovedInfo = null;
+  private clickedBlockInfo: null | ClickedInfo = null;
 
   get cubeR() {
     return 0.5 * (3 + 2 * (this.spread - 1));
@@ -334,6 +378,7 @@ export class Rubik {
 
   constructor(gl: WebGL2RenderingContext, camera: Camera) {
     this.gl = gl;
+    this.initGL();
 
     this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
     this.gl.clearDepth(1);
@@ -351,6 +396,12 @@ export class Rubik {
     this.handleInputEvents();
 
     this.initialPosition();
+  }
+
+  private initGL() {
+    this.gl.enable(this.gl.DEPTH_TEST);
+    this.gl.depthFunc(this.gl.LEQUAL);
+    this.gl.cullFace(this.gl.BACK);
   }
 
   private createBlocks() {
@@ -414,11 +465,11 @@ export class Rubik {
   }
 
   private queueRotation(axis: Axis, level: Level, dir: Dir) {
-    this.rotationQueue.push([axis, level, dir, 0, 0]);
+    this.rotationQueue.push({ axis, level, dir, elapsedA: 0, elapsedT: 0, turns: 1 });
   }
 
   private rotate(angle: number, rotAxis: vec3) {
-    const rotation = mat4.rotate(mat4.create(), mat4.create(), rad(angle), rotAxis);
+    const rotation = mat4.fromRotation(mat4.create(), rad(angle), rotAxis);
     mat4.multiply(this.transform, rotation, this.transform);
     this.triggerRedraw();
   }
@@ -455,20 +506,21 @@ export class Rubik {
 
   private runRotation(dt: number) {
     if (this.rotationQueue.length) {
-      const [axis, level, dir, elapsedA, elapsedT] = this.rotationQueue[0];
+      const { axis, level, dir, elapsedA, elapsedT, turns, reverse } = this.rotationQueue[0];
       const fullT = (this.scrambling ? 0.5 : 1) / this.speed;
       const t = elapsedT + dt;
-      const targetA = Math.max(clamp(utils.easeInOut(t, fullT, 90, 2.25), 0, 90), elapsedA);
-      const amt = Math.max(0, targetA - elapsedA);
+      const a = clamp(utils.easeInOut(t, fullT, 90, this.animAlpha), 0, 90) + (elapsedA > 90 ? 90 : 0);
+      const targetA = Math.max(a, elapsedA);
+      const amt = (reverse ? -1 : 1) * Math.max(0, targetA - elapsedA);
       const isFinal = t >= fullT;
 
-      this.rotateSlice(axis, level, dir, amt, isFinal);
+      this.rotateSlice(axis, level, dir, amt, isFinal, turns);
 
       if (isFinal) {
         this.rotationQueue.shift();
       } else {
-        this.rotationQueue[0][3] = targetA;
-        this.rotationQueue[0][4] = t;
+        this.rotationQueue[0].elapsedA = targetA;
+        this.rotationQueue[0].elapsedT = t;
       }
 
       if (!this.rotationQueue.length && this.scrambling) {
@@ -478,11 +530,11 @@ export class Rubik {
     }
   }
 
-  private rotateSlice(axis: Axis, level: Level, dir: Dir, amt: number, isFinal: boolean) {
+  private rotateSlice(axis: Axis, level: Level, dir: Dir, amt: number, isFinal: boolean, turns = 1) {
     const axisId = ["x", "y", "z"].indexOf(axis);
     for (let block of this.blocks) {
       if (block.position[axisId] == level) {
-        block.rotate(axis, dir, amt, isFinal);
+        block.rotate(axis, dir, amt, isFinal, turns);
       }
     }
   }
@@ -491,21 +543,26 @@ export class Rubik {
     return vec3.transformMat4(vec3.create(), position, this.transform);
   }
 
-  private findClickedBlock(x: number, y: number): [Axis | null, Side | null, Block | null] {
+  private inverseDisplayTransform(position: vec3) {
+    return vec3.transformMat4(vec3.create(), position, mat4.invert(mat4.create(), this.transform));
+  }
+
+  private findClickedBlock(x: number, y: number): null | [Axis, Side, Block, vec3] {
     let closestDist = Infinity;
     let clickedAxis: null | Axis = null;
     let clickedSide: null | Side = null;
     let closestBlock: null | Block = null;
+    let p: null | vec3 = null;
 
     const pNear = this.camera.position;
     const pFar = this.camera.getPickedVector(x, y);
 
     if (!utils.rayCubeSphere(pNear, pFar, [0, 0, 0], this.cubeR * 2)) {
-      return [null, null, null];
+      return null;
     }
 
     let cubeDist = Infinity;
-    let clickedPlane: null | [Axis, Side] = null;
+    let clickedPlane: null | [Axis, Side, vec3] = null;
 
     for (let [axis, side, bBox] of this.boundingPlanes) {
       for (let triangle of bBox) {
@@ -516,18 +573,20 @@ export class Rubik {
         const dist = vec3.distance(intersection, this.camera.position);
         if (dist < cubeDist) {
           cubeDist = dist;
-          clickedPlane = [axis, side];
+          clickedPlane = [axis, side, intersection];
         }
       }
     }
 
     if (!clickedPlane) {
-      return [null, null, null];
+      return null;
     }
 
-    const [axis, side] = clickedPlane;
+    const [axis, side, intersection] = clickedPlane;
     clickedAxis = axis;
     clickedSide = side;
+    p = intersection;
+
     const axisId = ["x", "y", "z"].indexOf(axis);
 
     for (let block of this.blocks) {
@@ -551,33 +610,216 @@ export class Rubik {
       }
     }
 
-    return [clickedAxis, clickedSide, closestBlock];
+    if (closestBlock) {
+      return [clickedAxis, clickedSide, closestBlock, p];
+    }
+    return null;
+  }
+
+  private handleManualSwipe(x: number, y: number) {
+    if (!this.clickedBlockInfo) {
+      return;
+    }
+    const { axis, normal, block, center, p } = this.clickedBlockInfo;
+
+    const pNear = this.camera.position;
+    const pFar = this.camera.getPickedVector(x, y);
+
+    const intersection = utils.rayPlane(pNear, pFar, center, normal);
+    if (!intersection) {
+      console.warn("no ray plane (1) intersection");
+      return;
+    }
+
+    const mouseV = vec3.subtract(vec3.create(), intersection, p);
+    vec3.normalize(mouseV, this.inverseDisplayTransform(mouseV));
+
+    const faceAxisIdx = ["x", "y", "z"].indexOf(axis);
+    const rotAxisOptions = vec3ToV3(mouseV)
+      .map((v, i) => [v, i])
+      .filter((v, i) => i != faceAxisIdx);
+
+    const minAxisIdx = min(rotAxisOptions, (k) => Math.abs(k[0]))[1];
+    const minAxis = [Axis.x, Axis.y, Axis.z][minAxisIdx];
+    const rotAxis = getAxisVector(minAxis);
+    const level = block.position[minAxisIdx];
+
+    let moveNormal = this.displayTransform(rotAxis);
+    const moveCenter = this.displayTransform(getAxisVector(minAxis, level));
+
+    const cameraDir = vec3.subtract(vec3.create(), this.camera.position, moveCenter);
+    vec3.normalize(cameraDir, cameraDir);
+
+    const { normal: adjustedNormal, shallowNormals } = utils.adjustMovePlaneCamAngle(moveNormal, cameraDir);
+    moveNormal = adjustedNormal;
+
+    const blockDirIntersection = shallowNormals
+      ? utils.rayShallowPlane(pNear, pFar, moveCenter, shallowNormals)
+      : utils.rayPlane(pNear, pFar, moveCenter, moveNormal);
+
+    if (!blockDirIntersection) {
+      console.warn("no ray plane (block dir) intersection");
+      return;
+    }
+
+    const blockDir = vec3.subtract(vec3.create(), blockDirIntersection, moveCenter);
+    if (vec3.length(blockDir) < EPSILON) {
+      return;
+    }
+    vec3.normalize(blockDir, blockDir);
+
+    if (shallowNormals) {
+      shallowNormals.prev = blockDirIntersection;
+      shallowNormals.prevDir = blockDir;
+    }
+
+    this.manualBlockMoving = true;
+    this.moveBlockInfo = { currAngle: 0, level, normal: moveNormal, center: moveCenter, blockDir, shallowNormals };
+  }
+
+  private handleManualBlockMove(x: number, y: number) {
+    if (!this.moveBlockInfo) {
+      return;
+    }
+
+    const { level, normal, center, blockDir, shallowNormals } = this.moveBlockInfo;
+
+    const pNear = this.camera.position;
+    const pFar = this.camera.getPickedVector(x, y);
+
+    const intersection = shallowNormals
+      ? utils.rayShallowPlane(pNear, pFar, center, shallowNormals)
+      : utils.rayPlane(pNear, pFar, center, normal);
+    if (!intersection) {
+      // todo binary search for an intersecting plane
+      return;
+    }
+
+    const newDir = vec3.subtract(vec3.create(), intersection, center);
+    if (vec3.length(newDir) < EPSILON) {
+      return;
+    }
+    vec3.normalize(newDir, newDir);
+
+    const [axis, side] = this.blockMoveAxisAndSide(blockDir, newDir);
+
+    let diff: number;
+
+    if (shallowNormals) {
+      const { cameraDir, prev, prevDir } = shallowNormals;
+
+      shallowNormals.prev = intersection;
+      shallowNormals.prevDir = newDir;
+
+      const movingDir = vec3.subtract(vec3.create(), intersection, prev);
+      vec3.normalize(movingDir, movingDir);
+
+      const dot = Math.abs(vec3.dot(cameraDir, movingDir));
+      const angleSquish = 1 - dot;
+
+      diff = angleSquish * deg(acosC(vec3.dot(prevDir, newDir)));
+
+      const [axis2, side2] = this.blockMoveAxisAndSide(prevDir, newDir);
+      this.rotateSlice(axis2, level, side2, diff, false);
+    } else {
+      const angle = deg(acosC(vec3.dot(blockDir, newDir)));
+      diff = angle - this.moveBlockInfo.currAngle;
+      this.rotateSlice(axis, level, side, diff, false);
+    }
+
+    this.moveBlockInfo.currAngle += diff;
+    this.movedBlockInfo = { axis, level, side };
+    this.triggerRedraw();
+  }
+
+  private blockMoveAxisAndSide(blockDir1: vec3, blockDir2: vec3) {
+    const rotAxis = vec3.cross(vec3.create(), blockDir1, blockDir2);
+    vec3.normalize(rotAxis, this.inverseDisplayTransform(rotAxis));
+    return getAxisAndSide(rotAxis);
   }
 
   private handleInputEvents() {
     const canvas = this.gl.canvas;
 
-    const mousedownRotateHandler = (e: PointerEvent) => {
-      if (this.mouse) {
-        const cap = (n: number) => Math.min(n, 2);
-        this.rotate(cap(e.clientY - this.mouse.y), [1, 0, 0]);
-        this.rotate(cap(e.clientX - this.mouse.x), [0, 1, 0]);
-      }
+    const mousemoveRotateHandler = (e: PointerEvent) => {
+      const cap = (n: number) => Math.min(n, 2);
+      this.rotate(cap(e.clientY - this.mouse.y), [1, 0, 0]);
+      this.rotate(cap(e.clientX - this.mouse.x), [0, 1, 0]);
       this.mouse = { x: e.clientX, y: e.clientY };
     };
 
     const mouseupRotateHandler = () => {
-      window.removeEventListener("pointermove", mousedownRotateHandler);
+      window.removeEventListener("pointermove", mousemoveRotateHandler);
       window.removeEventListener("pointerup", mouseupRotateHandler);
+    };
+
+    const mousemoveBlockHandler = (e: PointerEvent) => {
+      const { clientX: x, clientY: y } = e;
+      const { x: x0, y: y0 } = this.mouse0;
+
+      if (this.manualBlockMoving) {
+        this.handleManualBlockMove(x, y);
+      } else if (vec2.distance([x0, y0], [x, y]) > 10) {
+        this.handleManualSwipe(x, y);
+      }
+      this.mouse = { x, y };
+    };
+
+    const mouseupBlockHandler = () => {
+      cleanup();
+      window.removeEventListener("pointermove", mousemoveBlockHandler);
+      window.removeEventListener("pointerup", mouseupBlockHandler);
+    };
+
+    const cleanup = () => {
+      if (this.movedBlockInfo) {
+        const { axis, level, side: dir } = this.movedBlockInfo;
+
+        const block = this.blocks.find((block) => block.position[["x", "y", "z"].indexOf(axis)] == level);
+        let blockAngle = block
+          ? deg(Math.abs(quat.getAxisAngle(vec3.create(), mat4.getRotation(quat.create(), block.geometry.transform))))
+          : 0;
+        blockAngle = blockAngle > 180 ? 360 - blockAngle : blockAngle;
+        const currAngle = block ? blockAngle : this.moveBlockInfo ? this.moveBlockInfo.currAngle : 0;
+
+        const remA = currAngle - (currAngle > 90 ? 90 : 0);
+        const reverse = remA < 45;
+        const remElapsedA = reverse ? 90 - remA : remA;
+
+        const elapsedT = utils.easeInOut(remElapsedA, 90, 1 / this.speed, 1 / this.animAlpha);
+        const elapsedA = remElapsedA + (currAngle > 90 ? 90 : 0);
+        const turns = mR(currAngle / 90);
+
+        this.rotationQueue.push({ axis, level, dir, elapsedA, elapsedT, turns, reverse });
+
+        this.triggerRedraw();
+      }
+      this.manualBlockMoving = false;
+      this.moveBlockInfo = null;
+      this.movedBlockInfo = null;
     };
 
     canvas.addEventListener("pointerdown", (e) => {
       if (e.buttons == 1) {
-        const [clickedAxis, clickedSide, closestBlock] = this.findClickedBlock(e.clientX, e.clientY);
-        console.log(closestBlock ? clickedAxis! + clickedSide! : "no face", closestBlock ? closestBlock.position : "");
+        this.mouse0 = { x: e.clientX, y: e.clientY };
         this.mouse = { x: e.clientX, y: e.clientY };
-        window.addEventListener("pointermove", mousedownRotateHandler);
-        window.addEventListener("pointerup", mouseupRotateHandler);
+        const clickedBlockInfo = this.findClickedBlock(e.clientX, e.clientY);
+
+        if (clickedBlockInfo) {
+          if (!this.rotationQueue.length) {
+            const [axis, side, block, p] = clickedBlockInfo;
+            const normal = this.displayTransform(getAxisVector(axis, side));
+            const center = vec3.scale(vec3.create(), normal, this.cubeR);
+            this.clickedBlockInfo = { axis, side, block, p, normal, center };
+
+            window.addEventListener("pointermove", mousemoveBlockHandler);
+            window.addEventListener("pointerup", mouseupBlockHandler);
+          }
+        } else {
+          this.clickedBlockInfo = null;
+          window.addEventListener("pointermove", mousemoveRotateHandler);
+          window.addEventListener("pointerup", mouseupRotateHandler);
+        }
       }
     });
   }
