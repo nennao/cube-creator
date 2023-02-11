@@ -1,6 +1,8 @@
 body {
   font-family: sans-serif;
   margin: 0;
+  user-select: none;
+  overflow: hidden;
 }
 
 #canvasCont {
@@ -17,4 +19,12 @@ body {
 #controlsCont button {
   font-size: large;
   padding: 4px 12px;
+}
+
+#glCanvas {
+  touch-action: none;
+}
+
+.hidden {
+  display: none;
 }

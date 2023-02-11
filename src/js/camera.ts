@@ -52,7 +52,7 @@ export class Camera {
     return vec3.transformMat4(vec3.create(), pf, invVP);
   }
 
-  private handleZoom(delta: number) {
+  handleZoom(delta: number) {
     this.distance = mR(this.distance + delta, 2);
     if (this.distance > 30) this.distance = 30;
     if (this.distance < 6) this.distance = 6;

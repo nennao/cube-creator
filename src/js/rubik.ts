@@ -364,6 +364,12 @@ export class Rubik {
   private movedBlockInfo: null | MovedInfo = null;
   private clickedBlockInfo: null | ClickedInfo = null;
 
+  private readonly pointerEvents: { activeId: number; cache: PointerEvent[]; prevDiff: number } = {
+    activeId: -1,
+    cache: [],
+    prevDiff: -1,
+  };
+
   get cubeR() {
     return 0.5 * (3 + 2 * (this.spread - 1));
   }
@@ -742,18 +748,30 @@ export class Rubik {
     const canvas = this.gl.canvas;
 
     const mousemoveRotateHandler = (e: PointerEvent) => {
-      const cap = (n: number) => Math.min(n, 2);
-      this.rotate(cap(e.clientY - this.mouse.y), [1, 0, 0]);
-      this.rotate(cap(e.clientX - this.mouse.x), [0, 1, 0]);
+      if (this.pointerEvents.activeId != e.pointerId) {
+        return;
+      }
+      if (this.pointerEvents.cache.length == 1) {
+        const cap = (n: number) => Math.min(n, 2);
+        this.rotate(cap(e.clientY - this.mouse.y), [1, 0, 0]);
+        this.rotate(cap(e.clientX - this.mouse.x), [0, 1, 0]);
+      }
       this.mouse = { x: e.clientX, y: e.clientY };
     };
 
-    const mouseupRotateHandler = () => {
+    const mouseupRotateHandler = (e: PointerEvent) => {
+      if (this.pointerEvents.activeId != e.pointerId) {
+        return;
+      }
       window.removeEventListener("pointermove", mousemoveRotateHandler);
       window.removeEventListener("pointerup", mouseupRotateHandler);
+      window.removeEventListener("pointercancel", mouseupRotateHandler);
     };
 
     const mousemoveBlockHandler = (e: PointerEvent) => {
+      if (this.pointerEvents.activeId != e.pointerId) {
+        return;
+      }
       const { clientX: x, clientY: y } = e;
       const { x: x0, y: y0 } = this.mouse0;
 
@@ -765,10 +783,14 @@ export class Rubik {
       this.mouse = { x, y };
     };
 
-    const mouseupBlockHandler = () => {
+    const mouseupBlockHandler = (e: PointerEvent) => {
+      if (this.pointerEvents.activeId != e.pointerId) {
+        return;
+      }
       cleanup();
       window.removeEventListener("pointermove", mousemoveBlockHandler);
       window.removeEventListener("pointerup", mouseupBlockHandler);
+      window.removeEventListener("pointercancel", mouseupBlockHandler);
     };
 
     const cleanup = () => {
@@ -799,29 +821,84 @@ export class Rubik {
       this.movedBlockInfo = null;
     };
 
+    const mousemoveZoomHandler = this.mousemoveZoomHandler.bind(this);
+
+    const mouseupZoomHandler = () => {
+      window.removeEventListener("pointermove", mousemoveZoomHandler);
+      window.removeEventListener("pointerup", mouseupZoomHandler);
+      window.removeEventListener("pointercancel", mouseupZoomHandler);
+    };
+
     canvas.addEventListener("pointerdown", (e) => {
-      if (e.buttons == 1) {
-        this.mouse0 = { x: e.clientX, y: e.clientY };
-        this.mouse = { x: e.clientX, y: e.clientY };
-        const clickedBlockInfo = this.findClickedBlock(e.clientX, e.clientY);
+      this.pointerEvents.cache.push(e);
 
-        if (clickedBlockInfo) {
-          if (!this.rotationQueue.length) {
-            const [axis, side, block, p] = clickedBlockInfo;
-            const normal = this.displayTransform(getAxisVector(axis, side));
-            const center = vec3.scale(vec3.create(), normal, this.cubeR);
-            this.clickedBlockInfo = { axis, side, block, p, normal, center };
+      if (this.pointerEvents.cache.length == 2 && !this.manualBlockMoving) {
+        window.addEventListener("pointermove", mousemoveZoomHandler);
+        window.addEventListener("pointerup", mouseupZoomHandler);
+        window.addEventListener("pointercancel", mouseupZoomHandler);
+      } else if (this.pointerEvents.cache.length == 1) {
+        this.pointerEvents.activeId = e.pointerId;
+        if (e.buttons == 1) {
+          this.mouse0 = { x: e.clientX, y: e.clientY };
+          this.mouse = { x: e.clientX, y: e.clientY };
+          const clickedBlockInfo = this.findClickedBlock(e.clientX, e.clientY);
 
-            window.addEventListener("pointermove", mousemoveBlockHandler);
-            window.addEventListener("pointerup", mouseupBlockHandler);
+          if (clickedBlockInfo) {
+            if (!this.rotationQueue.length) {
+              const [axis, side, block, p] = clickedBlockInfo;
+              const normal = this.displayTransform(getAxisVector(axis, side));
+              const center = vec3.scale(vec3.create(), normal, this.cubeR);
+              this.clickedBlockInfo = { axis, side, block, p, normal, center };
+
+              window.addEventListener("pointermove", mousemoveBlockHandler);
+              window.addEventListener("pointerup", mouseupBlockHandler);
+              window.addEventListener("pointercancel", mouseupBlockHandler);
+            }
+          } else {
+            this.clickedBlockInfo = null;
+            window.addEventListener("pointermove", mousemoveRotateHandler);
+            window.addEventListener("pointerup", mouseupRotateHandler);
+            window.addEventListener("pointercancel", mouseupRotateHandler);
           }
-        } else {
-          this.clickedBlockInfo = null;
-          window.addEventListener("pointermove", mousemoveRotateHandler);
-          window.addEventListener("pointerup", mouseupRotateHandler);
         }
       }
     });
+
+    const pointerCleanup = (e: PointerEvent) => {
+      for (let i = 0; i < this.pointerEvents.cache.length; i++) {
+        if (this.pointerEvents.cache[i].pointerId == e.pointerId) {
+          this.pointerEvents.cache.splice(i, 1);
+          break;
+        }
+      }
+      if (this.pointerEvents.cache.length < 2) {
+        this.pointerEvents.prevDiff = -1;
+      }
+    };
+
+    window.addEventListener("pointerup", pointerCleanup);
+    window.addEventListener("pointercancel", pointerCleanup);
+  }
+
+  mousemoveZoomHandler(e: PointerEvent) {
+    const { cache, prevDiff } = this.pointerEvents;
+
+    // update the event
+    for (let i = 0; i < cache.length; i++) {
+      if (e.pointerId == cache[i].pointerId) {
+        cache[i] = e;
+        break;
+      }
+    }
+
+    if (cache.length == 2) {
+      let currDiff = Math.hypot(cache[0].clientX - cache[1].clientX, cache[0].clientY - cache[1].clientY);
+
+      if (prevDiff > 0) {
+        this.camera.handleZoom((prevDiff - currDiff) * 0.1);
+      }
+      this.pointerEvents.prevDiff = currDiff;
+    }
   }
 
   private drawBlocks() {

@@ -2,10 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rubik's</title>
     <link rel="stylesheet" href="css/main.css" />
     <script type="module" src="js/index.ts"></script>
   </head>
+
   <body>
     <div>
       <div id="canvasCont">
@@ -13,7 +15,7 @@
       </div>
 
       <div id="controlsCont">
-        <input id="boundsCheck" type="checkbox" /><label for="boundsCheck">bounding</label>
+        <span class="hidden"><input id="boundsCheck" type="checkbox" /><label for="boundsCheck">bounding</label></span>
         <button id="scramble">scramble</button>
         <button id="reset">reset</button>
       </div>
