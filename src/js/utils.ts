@@ -74,7 +74,7 @@ export function targetListener(listener: (t: HTMLInputElement) => void) {
   };
 }
 
-type InputEvents = "onclick";
+type InputEvents = "onclick" | "onchange";
 
 export function handleInputById(id: string, val: string | boolean, type: InputEvents, listener: (e: Event) => void) {
   const el = document.getElementById(id);
@@ -88,7 +88,7 @@ export function handleInputById(id: string, val: string | boolean, type: InputEv
 
 export function handleButtonById(id: string, type: InputEvents, listener: (e: Event) => void) {
   const el = document.getElementById(id);
-  if (el instanceof HTMLButtonElement) {
+  if (el instanceof HTMLButtonElement || el instanceof HTMLDivElement) {
     el[type] = listener;
   } else {
     console.warn(`cant find button with id ${id}`);

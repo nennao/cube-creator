@@ -134,19 +134,12 @@ class FaceBounds {
 }
 
 class Face {
-  cover = 0.75;
-  edgeR = 0.15;
-  ringW = 1;
-  extrude = 0.005;
   private readonly gl: WebGL2RenderingContext;
   private readonly block: Block;
   private readonly root: Rubik;
   readonly axis: Axis;
   readonly side: Side;
   readonly faceId: FaceId;
-  private readonly vertices: V3[];
-  private readonly indices: V3[];
-  private readonly colors: V3[];
 
   private readonly _geometry: Geometry;
 
@@ -158,18 +151,28 @@ class Face {
     this.gl = gl;
     this.block = block;
     this.root = root;
-    const blockSide = 1 - block.edgeR;
-    const [v, i] = extrudedRingData(Math.min(this.cover, blockSide), 0.5, this.edgeR, this.ringW, this.extrude);
 
     this.axis = axis;
     this.side = side;
-    this.vertices = orientFace(v, axis, side);
-    this.indices = i;
     this.faceId = faceId || getFaceId(axis, side);
-    this.colors = getFaceColors(this.faceId, this.vertices.length);
 
-    this._geometry = new Geometry(gl, this.vertices, this.colors, this.indices);
+    const [v, i, c] = this.initGeo();
+
+    this._geometry = new Geometry(gl, v, c, i);
     this.initPosition();
+  }
+
+  initGeo() {
+    const { root, axis, side, faceId } = this;
+    const [v, i] = extrudedRingData(root.faceCoverAdj, 0.5, root.faceR, root.faceRingW, root.faceExtrude);
+    const vertices = orientFace(v, axis, side);
+    const colors = getFaceColors(faceId, vertices.length);
+    return [vertices, i, colors];
+  }
+
+  updateGeo() {
+    const [v, i, c] = this.initGeo();
+    this.geometry.update(v, c, i);
   }
 
   private initPosition() {
@@ -186,10 +189,6 @@ class Block {
   private readonly root: Rubik;
   faces: Face[];
   position: vec3;
-  edgeR = 0.15;
-  private readonly vertices: V3[];
-  private readonly indices: V3[];
-  private readonly colors: V3[];
   private readonly blockColor = [0.1, 0.1, 0.1];
   private _boundingBox: TriVec3[] = [];
 
@@ -209,14 +208,22 @@ class Block {
     this.root = root;
     this.position = position;
 
-    const [v, i] = roundedCubeData(1, this.edgeR);
-    this.vertices = v;
-    this.indices = i;
-    this.colors = Array(v.length).fill(this.blockColor);
+    const [v, i, c] = this.initGeo();
 
-    this._geometry = new Geometry(gl, this.vertices, this.colors, this.indices);
-    this.faces = this.edgeR < 1 ? this.createFaces() : [];
+    this._geometry = new Geometry(gl, v, c, i);
+    this.faces = root.blockR < 1 ? this.createFaces() : [];
     this.initPosition();
+  }
+
+  initGeo() {
+    const [v, i] = roundedCubeData(1, this.root.blockR);
+    const colors: V3[] = Array(v.length).fill(this.blockColor);
+    return [v, i, colors];
+  }
+
+  updateGeo() {
+    const [v, i, c] = this.initGeo();
+    this.geometry.update(v, c, i);
   }
 
   get displayPosition(): V3 {
@@ -330,6 +337,17 @@ export class Rubik {
   private movedBlockInfo: null | MovedInfo = null;
   private clickedBlockInfo: null | ClickedInfo = null;
 
+  blockR = 0.15;
+  faceCover = 0.75;
+  faceR = 0.15;
+  faceRingW = 1;
+  faceExtrude = 0.005;
+
+  get faceCoverAdj() {
+    const blockSide = 1 - this.blockR;
+    return Math.min(this.faceCover, blockSide);
+  }
+
   private readonly pointerEvents: { activeId: number; cache: PointerEvent[]; prevDiff: number } = {
     activeId: -1,
     cache: [],
@@ -429,7 +447,43 @@ export class Rubik {
       })
     );
     utils.handleButtonById("scramble", "onclick", () => this.scramble());
+    utils.handleButtonById("resetCam", "onclick", () => this.resetCam());
     utils.handleButtonById("reset", "onclick", () => this.reset());
+
+    utils.handleButtonById("sideMenuButton", "onclick", () => {
+      const menu = document.getElementById("sideMenu")!;
+      menu.classList.toggle("hidden");
+    });
+
+    for (let id of ["blockR", "faceCover", "faceR", "faceRingW", "faceExtrude"] as const) {
+      const s = id == "faceExtrude" ? 200 : 20;
+      const adjust = (val: number, get = false) => mR(get ? val / s : val * s, 6);
+
+      utils.handleInputById(
+        `${id}Range`,
+        adjust(this[id]).toString(),
+        "onchange",
+        utils.targetListener((t) => {
+          const prevCover = this.faceCoverAdj;
+          this[id] = adjust(+t.value, true);
+          this.updateGeo(id == "blockR", id != "blockR" || this.faceCoverAdj != prevCover);
+          this.triggerRedraw();
+        })
+      );
+    }
+  }
+
+  updateGeo(updateBlocks: boolean, updateFaces: boolean) {
+    for (let block of this.blocks) {
+      if (updateBlocks) {
+        block.updateGeo();
+      }
+      if (updateFaces) {
+        for (let face of block.faces) {
+          face.updateGeo();
+        }
+      }
+    }
   }
 
   private triggerRedraw() {
@@ -465,6 +519,12 @@ export class Rubik {
   private initialPosition() {
     this.rotate(-45, [0, 1, 0]);
     this.rotate(35, [1, 0, 0]);
+  }
+
+  private resetCam() {
+    this.transform = mat4.create();
+    this.initialPosition();
+    this.triggerRedraw();
   }
 
   private reset() {

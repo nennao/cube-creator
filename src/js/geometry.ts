@@ -44,6 +44,14 @@ export class Geometry {
     this.transform = mat4.create();
   }
 
+  update(positions: V3[], colors: V3[], indices: V3[]) {
+    const normals = calculateNormals(positions, indices);
+    this.positions.write(positions.flat());
+    this.colors.write(colors.flat());
+    this.normals.write(normals.flat());
+    this.indices.write(indices.flat());
+  }
+
   draw(shader: SimpleShader) {
     shader.setUniformMatrix4fv("u_ModelMatrix", this.transform);
 
