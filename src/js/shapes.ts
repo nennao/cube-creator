@@ -3,6 +3,7 @@ import {
   arrayIntersect,
   arrayRange,
   clamp,
+  convertToFacePositions,
   indexCircleToTriangles,
   indexRingToTriangles,
   indexRowsToTriangles,
@@ -85,7 +86,50 @@ function roundedSquarePositions(side: number, z: number, rPercent: number, noCen
   return [...quadrant0, ...quadrant1, ...quadrant2, ...quadrant3];
 }
 
-export function roundedRingData(side = 1, z = 0, rPercent = 0.25, wPercent = 0.5): [V3[], V3[]] {
+export function extrudedRingData(
+  side: number,
+  z: number,
+  rPercent: number,
+  wPercent: number,
+  extrude: number
+): [V3[], V3[]] {
+  const eps = 0.001;
+
+  const top = roundedRingData(side, z + Math.max(extrude, eps), rPercent, wPercent);
+
+  if (extrude <= eps) {
+    return top;
+  }
+
+  const [positions, indices] = top;
+
+  const ring = !(wPercent > 0.99);
+  const circle = rPercent > 0.99;
+  const square = rPercent < 0.01;
+
+  const posLen = positions.length;
+
+  // if not ring and not square then filter out center positions
+  const upperPos = positions
+    .filter((_, i) => ring || square || (circle ? i : i % (posLen / 4)))
+    .map((p): V3 => [p[0], p[1], p[2]]);
+  const lowerPos = upperPos.map((p): V3 => [p[0], p[1], z]);
+
+  const newPosLen = upperPos.length;
+  const ringLen = newPosLen / (ring ? 2 : 1);
+  const cutoff = ring ? posLen / 2 : 0;
+  const indexRange = (len: number, start = 0) => arrayRange(len, posLen + start);
+
+  const innerI = ring ? indexRingToTriangles(indexRange(ringLen, newPosLen), indexRange(ringLen)) : [];
+  const outerI = indexRingToTriangles(indexRange(ringLen, cutoff), indexRange(ringLen, newPosLen + cutoff));
+
+  const allPositions = [...positions, ...upperPos, ...lowerPos];
+  const allIndices = [...indices, ...innerI, ...outerI];
+
+  return square ? convertToFacePositions(allPositions, allIndices) : [allPositions, allIndices];
+}
+
+export function roundedRingData(side: number, z: number, rPercent: number, wPercent: number): [V3[], V3[]] {
   if (wPercent > 0.99) {
     return roundedSquareData(side, z, rPercent);
   }

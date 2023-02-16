@@ -3,7 +3,7 @@ import { mat4, quat, vec2, vec3 } from "gl-matrix";
 import { Camera } from "./camera";
 import { Geometry } from "./geometry";
 import { SimpleShader } from "./shader";
-import { cubeData, roundedCubeData, roundedRingData, squareData } from "./shapes";
+import { cubeData, extrudedRingData, roundedCubeData, squareData } from "./shapes";
 import * as utils from "./utils";
 import { acosC, clamp, deg, max, min, mR, rad, randInt, vec3ToV3, ShallowNormalsInfo, TriVec3, V3 } from "./utils";
 
@@ -134,10 +134,10 @@ class FaceBounds {
 }
 
 class Face {
-  faceR = 0.85;
+  cover = 0.75;
   edgeR = 0.15;
   ringW = 1;
-  private readonly zEpsilon = 0.001;
+  extrude = 0.005;
   private readonly gl: WebGL2RenderingContext;
   private readonly block: Block;
   private readonly root: Rubik;
@@ -159,7 +159,7 @@ class Face {
     this.block = block;
     this.root = root;
     const blockSide = 1 - block.edgeR;
-    const [v, i] = roundedRingData(this.faceR * blockSide, 0.5 + this.zEpsilon, this.edgeR, this.ringW);
+    const [v, i] = extrudedRingData(Math.min(this.cover, blockSide), 0.5, this.edgeR, this.ringW, this.extrude);
 
     this.axis = axis;
     this.side = side;
