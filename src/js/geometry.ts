@@ -4,13 +4,7 @@ import { Buffer, IndexBuffer } from "./buffer";
 import { SimpleShader } from "./shader";
 import { V3, vec3ToV3 } from "./utils";
 
-function calculateNormals(positionsFlat: number[], indicesFlat: number[]) {
-  const unflatten = (arr: number[]) =>
-    Array.from({ length: arr.length / 3 }, (_, i): V3 => [arr[i * 3], arr[i * 3 + 1], arr[i * 3 + 2]]);
-
-  const positions = unflatten(positionsFlat);
-  const indices = unflatten(indicesFlat);
-
+function calculateNormals(positions: V3[], indices: V3[]) {
   const normals = Array.from({ length: positions.length }, () => vec3.create());
 
   for (let [i0, i1, i2] of indices) {
@@ -38,14 +32,14 @@ export class Geometry {
   private readonly indices: IndexBuffer;
   transform: mat4;
 
-  constructor(gl: WebGL2RenderingContext, positions: number[], colors: number[], indices: number[]) {
+  constructor(gl: WebGL2RenderingContext, positions: V3[], colors: V3[], indices: V3[]) {
     this.gl = gl;
 
     const normals = calculateNormals(positions, indices);
-    this.positions = new Buffer(gl, positions, 3, gl.FLOAT);
-    this.colors = new Buffer(gl, colors, 3, gl.FLOAT);
+    this.positions = new Buffer(gl, positions.flat(), 3, gl.FLOAT);
+    this.colors = new Buffer(gl, colors.flat(), 3, gl.FLOAT);
     this.normals = new Buffer(gl, normals, 3, gl.FLOAT);
-    this.indices = new IndexBuffer(gl, indices);
+    this.indices = new IndexBuffer(gl, indices.flat());
 
     this.transform = mat4.create();
   }

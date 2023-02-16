@@ -3,6 +3,7 @@ import { mat4, quat, vec2, vec3 } from "gl-matrix";
 import { Camera } from "./camera";
 import { Geometry } from "./geometry";
 import { SimpleShader } from "./shader";
+import { cubeData, roundedCubeData, roundedRingData, squareData } from "./shapes";
 import * as utils from "./utils";
 import { acosC, clamp, deg, max, min, mR, rad, randInt, vec3ToV3, ShallowNormalsInfo, TriVec3, V3 } from "./utils";
 
@@ -64,7 +65,7 @@ function orientFace(vertices: V3[], axis: Axis, side: Side): V3[] {
   return vertices.map((v) => vec3ToV3(rotateFn(vec3.create(), v, [0, 0, 0], rad(angle))));
 }
 
-function getFaceColors(faceId: FaceId, vertexCount: number) {
+function getFaceColors(faceId: FaceId, vertexCount: number): V3[] {
   // prettier-ignore
   // const colorMap = {
   //   [FaceId.L]: [0, 1, 1], [FaceId.R]: [1, 0, 0],
@@ -77,40 +78,8 @@ function getFaceColors(faceId: FaceId, vertexCount: number) {
     [FaceId.B]: [0.0, 0.2, 0.5], [FaceId.F]: [0.0, 0.4, 0.1],
   };
   const color = colorMap[faceId];
-  return Array(vertexCount).fill(color).flat();
+  return Array(vertexCount).fill(color);
 }
-
-// prettier-ignore
-const cubeData = (): [V3[], number[]] => {
-  const vertices: V3[] = [
-    [-0.5, -0.5,  0.5],  [ 0.5, -0.5,  0.5],   [0.5,  0.5,  0.5],  [-0.5,  0.5,  0.5],
-    [-0.5, -0.5, -0.5],  [-0.5,  0.5, -0.5],   [0.5,  0.5, -0.5],  [ 0.5, -0.5, -0.5],
-  ];
-  const indices = [
-    0, 1, 2,    0, 2, 3,
-    7, 4, 5,    7, 5, 6,
-    3, 2, 6,    3, 6, 5,
-    4, 7, 1,    4, 1, 0,
-    1, 7, 6,    1, 6, 2,
-    4, 0, 3,    4, 3, 5,
-  ]
-  return [vertices, indices];
-};
-
-// prettier-ignore
-const squareData = (s = 1, z = 0): [V3[], number[]] => {
-  const r = 0.5 * s;
-  const vertices: V3[] = [
-    [-r, -r, z],
-    [ r, -r, z],
-    [ r,  r, z],
-    [-r,  r, z],
-  ]
-  const indices = [
-    0, 1, 2,    0, 2, 3,
-  ]
-  return [vertices, indices];
-};
 
 type ClickedInfo = {
   axis: Axis;
@@ -165,16 +134,19 @@ class FaceBounds {
 }
 
 class Face {
-  private readonly epsilon = 0.01;
+  faceR = 0.85;
+  edgeR = 0.15;
+  ringW = 1;
+  private readonly zEpsilon = 0.001;
   private readonly gl: WebGL2RenderingContext;
   private readonly block: Block;
   private readonly root: Rubik;
   readonly axis: Axis;
   readonly side: Side;
   readonly faceId: FaceId;
-  private readonly vertices: number[];
-  private readonly indices: number[];
-  private readonly colors: number[];
+  private readonly vertices: V3[];
+  private readonly indices: V3[];
+  private readonly colors: V3[];
 
   private readonly _geometry: Geometry;
 
@@ -186,14 +158,15 @@ class Face {
     this.gl = gl;
     this.block = block;
     this.root = root;
-    const [v, i] = squareData(0.7, 0.5 + this.epsilon);
+    const blockSide = 1 - block.edgeR;
+    const [v, i] = roundedRingData(this.faceR * blockSide, 0.5 + this.zEpsilon, this.edgeR, this.ringW);
 
     this.axis = axis;
     this.side = side;
-    this.vertices = orientFace(v, axis, side).flat();
+    this.vertices = orientFace(v, axis, side);
     this.indices = i;
     this.faceId = faceId || getFaceId(axis, side);
-    this.colors = getFaceColors(this.faceId, this.vertices.length / 3);
+    this.colors = getFaceColors(this.faceId, this.vertices.length);
 
     this._geometry = new Geometry(gl, this.vertices, this.colors, this.indices);
     this.initPosition();
@@ -213,9 +186,10 @@ class Block {
   private readonly root: Rubik;
   faces: Face[];
   position: vec3;
-  private readonly vertices: number[];
-  private readonly indices: number[];
-  private readonly colors: number[];
+  edgeR = 0.15;
+  private readonly vertices: V3[];
+  private readonly indices: V3[];
+  private readonly colors: V3[];
   private readonly blockColor = [0.1, 0.1, 0.1];
   private _boundingBox: TriVec3[] = [];
 
@@ -235,13 +209,13 @@ class Block {
     this.root = root;
     this.position = position;
 
-    const [v, i] = cubeData();
-    this.vertices = v.flat();
-    this.indices = i.flat();
-    this.colors = Array(v.length).fill(this.blockColor).flat();
+    const [v, i] = roundedCubeData(1, this.edgeR);
+    this.vertices = v;
+    this.indices = i;
+    this.colors = Array(v.length).fill(this.blockColor);
 
     this._geometry = new Geometry(gl, this.vertices, this.colors, this.indices);
-    this.faces = this.createFaces();
+    this.faces = this.edgeR < 1 ? this.createFaces() : [];
     this.initPosition();
   }
 
@@ -338,7 +312,7 @@ export class Rubik {
   transform = mat4.create();
 
   private readonly animAlpha = 2.25;
-  readonly spread = 1.1;
+  readonly spread = 1.05;
   private blocks: Block[];
 
   private scrambling = false;
@@ -429,7 +403,7 @@ export class Rubik {
         const colors = getFaceColors(faceId, vertices.length);
         const x: [Axis, Side, TriVec3[]] = [axis, side, triangles];
         res.push(x);
-        bounds.push(new FaceBounds(new Geometry(this.gl, vertices.flat(), colors, i), this));
+        bounds.push(new FaceBounds(new Geometry(this.gl, vertices, colors, i), this));
       }
     }
     return [res, bounds];

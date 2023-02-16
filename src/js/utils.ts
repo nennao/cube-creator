@@ -48,6 +48,26 @@ export function shuffle<T>(array: T[], inPlace = false): T[] {
   return array;
 }
 
+export function sort<T>(array: T[], key?: (a: T, b: T) => number, inPlace = false): T[] {
+  if (!inPlace) {
+    array = [...array];
+  }
+  key ? array.sort(key) : array.sort();
+  return array;
+}
+
+export function sortNum(array: number[], key = (a: number, b: number) => a - b, inPlace = false) {
+  return sort(array, key, inPlace);
+}
+
+export function arrayIntersect<T>(arr1: T[], arr2: T[]) {
+  return arr1.filter((val) => arr2.includes(val)).filter((val, i, arr) => arr.indexOf(val) == i);
+}
+
+export function arrayRange(len: number, start = 0) {
+  return Array.from({ length: len }, (_, i) => i + start);
+}
+
 export function targetListener(listener: (t: HTMLInputElement) => void) {
   return (e: Event) => {
     listener(e.target as HTMLInputElement);
@@ -83,17 +103,40 @@ export function vec3ToV3(v: vec3): V3 {
 
 export type TriVec3 = [vec3, vec3, vec3];
 
-export function getTriangles(vertices: [number, number, number][], indices: number[]): TriVec3[] {
-  return Array.from({ length: indices.length / 3 }).map((_, i) => [
-    vertices[indices[i * 3]],
-    vertices[indices[i * 3 + 1]],
-    vertices[indices[i * 3 + 2]],
-  ]);
+export function getTriangles(vertices: V3[], indices: V3[]): TriVec3[] {
+  return Array.from(indices).map(([i0, i1, i2]) => [vertices[i0], vertices[i1], vertices[i2]]);
 }
 
 export function transformTriangle(triangle: TriVec3, transform: mat4): TriVec3 {
   const f = (t: vec3) => vec3.transformMat4(vec3.create(), t, transform);
   return [f(triangle[0]), f(triangle[1]), f(triangle[2])];
+}
+
+export function indexRowsToTriangles(row1: number[], row2: number[], ring = false): V3[] {
+  if (ring) {
+    row1 = [...row1, row1[0]];
+    row2 = [...row2, row2[0]];
+  }
+  return Array.from({ length: row1.length - 1 }, (_, i): [V3, V3] => [
+    [row1[i], row2[i], row1[i + 1]],
+    [row1[i + 1], row2[i], row2[i + 1]],
+  ]).flat();
+}
+
+export function indexRingToTriangles(row1: number[], row2: number[]): V3[] {
+  return indexRowsToTriangles(row1, row2, true);
+}
+
+export function indexSectorToTriangles(sector: number[], circle = false): V3[] {
+  const center = sector[0];
+  if (circle) {
+    sector = [...sector, sector[1]];
+  }
+  return Array.from({ length: sector.length - 2 }, (_, i) => [center, sector[i + 1], sector[i + 2]]);
+}
+
+export function indexCircleToTriangles(circle: number[]): V3[] {
+  return indexSectorToTriangles(circle, true);
 }
 
 function raySphere(p1: vec3, p2: vec3, center: vec3, r: number) {
