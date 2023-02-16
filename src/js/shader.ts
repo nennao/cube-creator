@@ -133,11 +133,13 @@ class ShaderBase {
 export class SimpleShader extends ShaderBase {
   readonly vertexPosition: GLint;
   readonly vertexColor: GLint;
+  readonly vertexNormal: GLint;
 
   constructor(gl: WebGL2RenderingContext) {
     super(gl, VS_SRC, FS_SRC);
     this.vertexPosition = this.lookupAttribLocationStrict("a_VertexPosition");
     this.vertexColor = this.lookupAttribLocationStrict("a_VertexColor");
+    this.vertexNormal = this.lookupAttribLocationStrict("a_VertexNormal");
   }
 
   setUniforms(camera: Camera) {

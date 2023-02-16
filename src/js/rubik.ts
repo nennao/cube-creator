@@ -4,15 +4,9 @@ import { Camera } from "./camera";
 import { Geometry } from "./geometry";
 import { SimpleShader } from "./shader";
 import * as utils from "./utils";
-import { acosC, clamp, deg, max, min, mR, rad, randInt, ShallowNormalsInfo, TriVec3 } from "./utils";
+import { acosC, clamp, deg, max, min, mR, rad, randInt, vec3ToV3, ShallowNormalsInfo, TriVec3, V3 } from "./utils";
 
 const EPSILON = 0.0000001;
-
-type V3 = [number, number, number];
-
-function vec3ToV3(v: vec3): V3 {
-  return [v[0], v[1], v[2]];
-}
 
 type Side = 1 | -1;
 
@@ -72,10 +66,15 @@ function orientFace(vertices: V3[], axis: Axis, side: Side): V3[] {
 
 function getFaceColors(faceId: FaceId, vertexCount: number) {
   // prettier-ignore
+  // const colorMap = {
+  //   [FaceId.L]: [0, 1, 1], [FaceId.R]: [1, 0, 0],
+  //   [FaceId.D]: [1, 0, 1], [FaceId.U]: [0, 1, 0],
+  //   [FaceId.B]: [1, 1, 0], [FaceId.F]: [0, 0, 1],
+  // };
   const colorMap = {
-    [FaceId.L]: [0, 1, 1], [FaceId.R]: [1, 0, 0],
-    [FaceId.D]: [1, 0, 1], [FaceId.U]: [0, 1, 0],
-    [FaceId.B]: [1, 1, 0], [FaceId.F]: [0, 0, 1],
+    [FaceId.L]: [0.8, 0.4, 0.0], [FaceId.R]: [0.6, 0.0, 0.0],
+    [FaceId.D]: [0.9, 0.9, 0.1], [FaceId.U]: [0.9, 0.9, 0.9],
+    [FaceId.B]: [0.0, 0.2, 0.5], [FaceId.F]: [0.0, 0.4, 0.1],
   };
   const color = colorMap[faceId];
   return Array(vertexCount).fill(color).flat();
@@ -238,15 +237,8 @@ class Block {
 
     const [v, i] = cubeData();
     this.vertices = v.flat();
-    this.indices = i;
-    this.colors = Array(this.vertices.length / 3 / 2)
-      .fill(this.blockColor)
-      .flat()
-      .concat(
-        Array(this.vertices.length / 3 / 2)
-          .fill([0, 0, 0])
-          .flat()
-      );
+    this.indices = i.flat();
+    this.colors = Array(v.length).fill(this.blockColor).flat();
 
     this._geometry = new Geometry(gl, this.vertices, this.colors, this.indices);
     this.faces = this.createFaces();
@@ -386,7 +378,7 @@ export class Rubik {
     this.gl = gl;
     this.initGL();
 
-    this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
+    this.gl.clearColor(0.5, 0.5, 0.5, 1.0);
     this.gl.clearDepth(1);
 
     this.camera = camera;

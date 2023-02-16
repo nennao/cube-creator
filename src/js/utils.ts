@@ -75,6 +75,12 @@ export function handleButtonById(id: string, type: InputEvents, listener: (e: Ev
   }
 }
 
+export type V3 = [number, number, number];
+
+export function vec3ToV3(v: vec3): V3 {
+  return [v[0], v[1], v[2]];
+}
+
 export type TriVec3 = [vec3, vec3, vec3];
 
 export function getTriangles(vertices: [number, number, number][], indices: number[]): TriVec3[] {
@@ -255,4 +261,29 @@ export function easeInOut(x: number, xScale = 1, yScale = 1, alpha = 2) {
   const xa = x ** alpha;
   const x1a = (1 - x) ** alpha;
   return (yScale * xa) / (xa + x1a);
+}
+
+export function normalToColor(n: vec3) {
+  return vec3ToV3(vec3.scale(vec3.create(), vec3.add(vec3.create(), n, [1, 1, 1]), 0.5));
+}
+
+export function triangleToNormalColor(triangle: TriVec3) {
+  const e1 = vec3.sub(vec3.create(), triangle[1], triangle[0]);
+  const e2 = vec3.sub(vec3.create(), triangle[2], triangle[0]);
+
+  const normal = vec3.cross(vec3.create(), e1, e2);
+  return normalToColor(normal);
+}
+
+export function convertToFacePositions(positions: V3[], indices: V3[]): [V3[], V3[]] {
+  const facePositions = [];
+  const faceIndices = [];
+
+  for (let i = 0; i < indices.length; i++) {
+    const newIndices: V3 = [i * 3, i * 3 + 1, i * 3 + 2];
+    const triangle = indices[i];
+    facePositions.push(...triangle.map((oldI) => positions[oldI]));
+    faceIndices.push(newIndices);
+  }
+  return [facePositions, faceIndices];
 }
