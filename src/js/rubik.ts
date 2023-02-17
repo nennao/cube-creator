@@ -6,6 +6,7 @@ import { SimpleShader } from "./shader";
 import { cubeData, extrudedRingData, roundedCubeData, squareData } from "./shapes";
 import * as utils from "./utils";
 import { acosC, clamp, deg, max, min, mR, rad, randInt, vec3ToV3, ShallowNormalsInfo, TriVec3, V3 } from "./utils";
+import { Scene } from "./scene";
 
 const EPSILON = 0.0000001;
 
@@ -320,11 +321,10 @@ class Block {
 }
 
 export class Rubik {
-  private clock = 0;
   private readonly gl: WebGL2RenderingContext;
-  readonly camera: Camera;
+  private readonly scene: Scene;
+  private readonly camera: Camera;
   readonly shader: SimpleShader;
-  private readonly changeWatcher: { val: any; get: () => any }[];
 
   private readonly speed = 2; // turns/s
   private rotationQueue: RotQueueItem[] = [];
@@ -340,10 +340,7 @@ export class Rubik {
   private readonly boundingBox: [Axis, Side, TriVec3[]][];
   private readonly bounds: FaceBounds[];
 
-  private mouse0 = { x: 0, y: 0 };
-  private mouse = { x: 0, y: 0 };
-
-  private manualBlockMoving = false;
+  manualBlockMoving = false;
 
   private moveBlockInfo: null | MoveInfo = null;
   private movedBlockInfo: null | MovedInfo = null;
@@ -361,12 +358,6 @@ export class Rubik {
     return Math.min(this.faceCover, blockSide);
   }
 
-  private readonly pointerEvents: { activeId: number; cache: PointerEvent[]; prevDiff: number } = {
-    activeId: -1,
-    cache: [],
-    prevDiff: -1,
-  };
-
   get cubeR() {
     return 0.5 * (3 + 2 * (this.spread - 1));
   }
@@ -379,32 +370,22 @@ export class Rubik {
     ]);
   }
 
-  constructor(gl: WebGL2RenderingContext, camera: Camera) {
+  constructor(gl: WebGL2RenderingContext, scene: Scene) {
     this.gl = gl;
-    this.initGL();
 
-    this.gl.clearColor(0.5, 0.5, 0.5, 1.0);
-    this.gl.clearDepth(1);
-
-    this.camera = camera;
-    this.shader = new SimpleShader(gl);
+    this.scene = scene;
+    this.camera = scene.camera;
+    this.shader = scene.cubeShader;
 
     const [bBox, bBounds] = this.getBoundingBox();
     this.boundingBox = bBox;
     this.bounds = bBounds;
 
     this.blocks = this.createBlocks();
-    this.changeWatcher = this.initChangeWatcher();
+
     this.initDOMInputs();
-    this.handleInputEvents();
 
     this.initialPosition();
-  }
-
-  private initGL() {
-    this.gl.enable(this.gl.DEPTH_TEST);
-    this.gl.depthFunc(this.gl.LEQUAL);
-    this.gl.cullFace(this.gl.BACK);
   }
 
   private createBlocks() {
@@ -438,15 +419,6 @@ export class Rubik {
       }
     }
     return [res, bounds];
-  }
-
-  private initChangeWatcher() {
-    const getters = [
-      () => 0, // for dom ui
-      () => this.camera.watcher,
-    ];
-
-    return getters.map((getter, i) => ({ val: i ? getter() : 1, get: getter }));
   }
 
   private initDOMInputs() {
@@ -511,7 +483,7 @@ export class Rubik {
   }
 
   private triggerRedraw() {
-    this.changeWatcher[0].val = 1;
+    this.scene.triggerRedraw();
   }
 
   private queueRotation(axis: Axis, level: Level, dir: Dir) {
@@ -522,6 +494,11 @@ export class Rubik {
     const rotation = mat4.fromRotation(mat4.create(), rad(angle), rotAxis);
     mat4.multiply(this.transform, rotation, this.transform);
     this.triggerRedraw();
+  }
+
+  mouseRotate(dx: number, dy: number) {
+    this.rotate(dy, [1, 0, 0]);
+    this.rotate(dx, [0, 1, 0]);
   }
 
   private scramble() {
@@ -558,6 +535,10 @@ export class Rubik {
     this.blocks = this.createBlocks();
     this.initialPosition();
     this.triggerRedraw();
+  }
+
+  update(dt: number) {
+    this.runRotation(dt);
   }
 
   private runRotation(dt: number) {
@@ -603,7 +584,9 @@ export class Rubik {
     return vec3.transformMat4(vec3.create(), position, mat4.invert(mat4.create(), this.transform));
   }
 
-  private findClickedBlock(x: number, y: number): null | [Axis, Side, Block, vec3] {
+  findClickedBlock(x: number, y: number): boolean {
+    this.clickedBlockInfo = null;
+
     let closestDist = Infinity;
     let clickedAxis: null | Axis = null;
     let clickedSide: null | Side = null;
@@ -614,7 +597,7 @@ export class Rubik {
     const pFar = this.camera.getPickedVector(x, y);
 
     if (!utils.rayCubeSphere(pNear, pFar, [0, 0, 0], this.cubeR * 2)) {
-      return null;
+      return false;
     }
 
     let cubeDist = Infinity;
@@ -635,7 +618,7 @@ export class Rubik {
     }
 
     if (!clickedPlane) {
-      return null;
+      return false;
     }
 
     const [axis, side, intersection] = clickedPlane;
@@ -667,9 +650,28 @@ export class Rubik {
     }
 
     if (closestBlock) {
-      return [clickedAxis, clickedSide, closestBlock, p];
+      return this.handleClickedBlock([clickedAxis, clickedSide, closestBlock, p]);
     }
-    return null;
+    return false;
+  }
+
+  private handleClickedBlock(clickedBlockInfo: [Axis, Side, Block, vec3]) {
+    if (!this.rotationQueue.length) {
+      const [axis, side, block, p] = clickedBlockInfo;
+      const normal = this.displayTransform(getAxisVector(axis, side));
+      const center = vec3.scale(vec3.create(), normal, this.cubeR);
+      this.clickedBlockInfo = { axis, side, block, p, normal, center };
+      return true;
+    }
+    return false;
+  }
+
+  handleMousemoveBlock(x: number, y: number, x0: number, y0: number) {
+    if (this.manualBlockMoving) {
+      this.handleManualBlockMove(x, y);
+    } else if (vec2.distance([x0, y0], [x, y]) > 10) {
+      this.handleManualSwipe(x, y);
+    }
   }
 
   private handleManualSwipe(x: number, y: number) {
@@ -794,161 +796,32 @@ export class Rubik {
     return getAxisAndSide(rotAxis);
   }
 
-  private handleInputEvents() {
-    const canvas = this.gl.canvas;
+  cleanupMousemoveBlock() {
+    if (this.movedBlockInfo) {
+      const { axis, level, side: dir } = this.movedBlockInfo;
 
-    const mousemoveRotateHandler = (e: PointerEvent) => {
-      if (this.pointerEvents.activeId != e.pointerId) {
-        return;
-      }
-      if (this.pointerEvents.cache.length == 1) {
-        const cap = (n: number) => Math.min(n, 2);
-        this.rotate(cap(e.clientY - this.mouse.y), [1, 0, 0]);
-        this.rotate(cap(e.clientX - this.mouse.x), [0, 1, 0]);
-      }
-      this.mouse = { x: e.clientX, y: e.clientY };
-    };
+      const block = this.blocks.find((block) => block.position[["x", "y", "z"].indexOf(axis)] == level);
+      let blockAngle = block
+        ? deg(Math.abs(quat.getAxisAngle(vec3.create(), mat4.getRotation(quat.create(), block.geometry.transform))))
+        : 0;
+      blockAngle = blockAngle > 180 ? 360 - blockAngle : blockAngle;
+      const currAngle = block ? blockAngle : this.moveBlockInfo ? this.moveBlockInfo.currAngle : 0;
 
-    const mouseupRotateHandler = (e: PointerEvent) => {
-      if (this.pointerEvents.activeId != e.pointerId) {
-        return;
-      }
-      window.removeEventListener("pointermove", mousemoveRotateHandler);
-      window.removeEventListener("pointerup", mouseupRotateHandler);
-      window.removeEventListener("pointercancel", mouseupRotateHandler);
-    };
+      const remA = currAngle - (currAngle > 90 ? 90 : 0);
+      const reverse = remA < 45;
+      const remElapsedA = reverse ? 90 - remA : remA;
 
-    const mousemoveBlockHandler = (e: PointerEvent) => {
-      if (this.pointerEvents.activeId != e.pointerId) {
-        return;
-      }
-      const { clientX: x, clientY: y } = e;
-      const { x: x0, y: y0 } = this.mouse0;
+      const elapsedT = utils.easeInOut(remElapsedA, 90, 1 / this.speed, 1 / this.animAlpha);
+      const elapsedA = remElapsedA + (currAngle > 90 ? 90 : 0);
+      const turns = mR(currAngle / 90);
 
-      if (this.manualBlockMoving) {
-        this.handleManualBlockMove(x, y);
-      } else if (vec2.distance([x0, y0], [x, y]) > 10) {
-        this.handleManualSwipe(x, y);
-      }
-      this.mouse = { x, y };
-    };
+      this.rotationQueue.push({ axis, level, dir, elapsedA, elapsedT, turns, reverse });
 
-    const mouseupBlockHandler = (e: PointerEvent) => {
-      if (this.pointerEvents.activeId != e.pointerId) {
-        return;
-      }
-      cleanup();
-      window.removeEventListener("pointermove", mousemoveBlockHandler);
-      window.removeEventListener("pointerup", mouseupBlockHandler);
-      window.removeEventListener("pointercancel", mouseupBlockHandler);
-    };
-
-    const cleanup = () => {
-      if (this.movedBlockInfo) {
-        const { axis, level, side: dir } = this.movedBlockInfo;
-
-        const block = this.blocks.find((block) => block.position[["x", "y", "z"].indexOf(axis)] == level);
-        let blockAngle = block
-          ? deg(Math.abs(quat.getAxisAngle(vec3.create(), mat4.getRotation(quat.create(), block.geometry.transform))))
-          : 0;
-        blockAngle = blockAngle > 180 ? 360 - blockAngle : blockAngle;
-        const currAngle = block ? blockAngle : this.moveBlockInfo ? this.moveBlockInfo.currAngle : 0;
-
-        const remA = currAngle - (currAngle > 90 ? 90 : 0);
-        const reverse = remA < 45;
-        const remElapsedA = reverse ? 90 - remA : remA;
-
-        const elapsedT = utils.easeInOut(remElapsedA, 90, 1 / this.speed, 1 / this.animAlpha);
-        const elapsedA = remElapsedA + (currAngle > 90 ? 90 : 0);
-        const turns = mR(currAngle / 90);
-
-        this.rotationQueue.push({ axis, level, dir, elapsedA, elapsedT, turns, reverse });
-
-        this.triggerRedraw();
-      }
-      this.manualBlockMoving = false;
-      this.moveBlockInfo = null;
-      this.movedBlockInfo = null;
-    };
-
-    const mousemoveZoomHandler = this.mousemoveZoomHandler.bind(this);
-
-    const mouseupZoomHandler = () => {
-      window.removeEventListener("pointermove", mousemoveZoomHandler);
-      window.removeEventListener("pointerup", mouseupZoomHandler);
-      window.removeEventListener("pointercancel", mouseupZoomHandler);
-    };
-
-    canvas.addEventListener("pointerdown", (e) => {
-      this.pointerEvents.cache.push(e);
-
-      if (this.pointerEvents.cache.length == 2 && !this.manualBlockMoving) {
-        window.addEventListener("pointermove", mousemoveZoomHandler);
-        window.addEventListener("pointerup", mouseupZoomHandler);
-        window.addEventListener("pointercancel", mouseupZoomHandler);
-      } else if (this.pointerEvents.cache.length == 1) {
-        this.pointerEvents.activeId = e.pointerId;
-        if (e.buttons == 1) {
-          this.mouse0 = { x: e.clientX, y: e.clientY };
-          this.mouse = { x: e.clientX, y: e.clientY };
-          const clickedBlockInfo = this.findClickedBlock(e.clientX, e.clientY);
-
-          if (clickedBlockInfo) {
-            if (!this.rotationQueue.length) {
-              const [axis, side, block, p] = clickedBlockInfo;
-              const normal = this.displayTransform(getAxisVector(axis, side));
-              const center = vec3.scale(vec3.create(), normal, this.cubeR);
-              this.clickedBlockInfo = { axis, side, block, p, normal, center };
-
-              window.addEventListener("pointermove", mousemoveBlockHandler);
-              window.addEventListener("pointerup", mouseupBlockHandler);
-              window.addEventListener("pointercancel", mouseupBlockHandler);
-            }
-          } else {
-            this.clickedBlockInfo = null;
-            window.addEventListener("pointermove", mousemoveRotateHandler);
-            window.addEventListener("pointerup", mouseupRotateHandler);
-            window.addEventListener("pointercancel", mouseupRotateHandler);
-          }
-        }
-      }
-    });
-
-    const pointerCleanup = (e: PointerEvent) => {
-      for (let i = 0; i < this.pointerEvents.cache.length; i++) {
-        if (this.pointerEvents.cache[i].pointerId == e.pointerId) {
-          this.pointerEvents.cache.splice(i, 1);
-          break;
-        }
-      }
-      if (this.pointerEvents.cache.length < 2) {
-        this.pointerEvents.prevDiff = -1;
-      }
-    };
-
-    window.addEventListener("pointerup", pointerCleanup);
-    window.addEventListener("pointercancel", pointerCleanup);
-  }
-
-  mousemoveZoomHandler(e: PointerEvent) {
-    const { cache, prevDiff } = this.pointerEvents;
-
-    // update the event
-    for (let i = 0; i < cache.length; i++) {
-      if (e.pointerId == cache[i].pointerId) {
-        cache[i] = e;
-        break;
-      }
+      this.triggerRedraw();
     }
-
-    if (cache.length == 2) {
-      let currDiff = Math.hypot(cache[0].clientX - cache[1].clientX, cache[0].clientY - cache[1].clientY);
-
-      if (prevDiff > 0) {
-        this.camera.handleZoom((prevDiff - currDiff) * 0.1);
-      }
-      this.pointerEvents.prevDiff = currDiff;
-    }
+    this.manualBlockMoving = false;
+    this.moveBlockInfo = null;
+    this.movedBlockInfo = null;
   }
 
   private drawBlocks() {
@@ -965,39 +838,12 @@ export class Rubik {
     }
   }
 
-  private draw() {
+  draw() {
     this.shader.bind(this.camera);
     this.shader.setUniform("u_RubikMatrix", this.transform);
     this.drawBlocks();
     if (this.showBounding) {
       this.drawBounds();
-    }
-  }
-
-  private uiWatch() {
-    for (let watcher of this.changeWatcher) {
-      if (watcher.val != watcher.get()) {
-        watcher.val = watcher.get();
-        return true;
-      }
-    }
-    return false;
-  }
-
-  render(t: number) {
-    const dt = t - this.clock;
-    this.runRotation(dt);
-
-    const play = this.uiWatch();
-
-    this.clock = t;
-
-    if (play) {
-      this.camera.update();
-
-      this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
-
-      this.draw();
     }
   }
 }

@@ -1,7 +1,7 @@
 import { CanvasHandler } from "./gl";
 
 import { Camera } from "./camera";
-import { Rubik } from "./rubik";
+import { Scene } from "./scene";
 
 function main() {
   const canvasHandler = new CanvasHandler("glCanvas");
@@ -20,10 +20,10 @@ function main() {
   };
   window.addEventListener("resize", resize);
 
-  const rubik = new Rubik(gl, camera);
+  const scene = new Scene(gl, camera);
 
   const render = (now: number) => {
-    rubik.render(now * 0.001);
+    scene.render(now * 0.001);
     requestAnimationFrame(render);
   };
 
