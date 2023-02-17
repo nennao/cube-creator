@@ -179,6 +179,11 @@ class Face {
     mat4.translate(this.geometry.transform, mat4.create(), this.block.displayPosition);
   }
 
+  updatePosition() {
+    this.geometry.transform = mat4.create();
+    this.initPosition();
+  }
+
   draw() {
     this.geometry.draw(this.root.shader);
   }
@@ -251,7 +256,15 @@ class Block {
     this._boundingBox = utils.getTriangles(vertices, i);
   }
 
-  private updatePosition(rotateFn: (pos: vec3) => vec3) {
+  updatePosition() {
+    this.geometry.transform = mat4.create();
+    this.faces.forEach((f) => {
+      f.updatePosition();
+    });
+    this.initPosition();
+  }
+
+  private rotateUpdatePosition(rotateFn: (pos: vec3) => vec3) {
     const rotatedPos = rotateFn(this.position);
     this.position = [mR(rotatedPos[0]), mR(rotatedPos[1]), mR(rotatedPos[2])];
 
@@ -286,7 +299,7 @@ class Block {
           y: vec3.rotateY,
           z: vec3.rotateZ,
         }[axis](vec3.create(), pos, axisV, rad(90 * dir * turns)));
-      this.updatePosition(rotateFn);
+      this.rotateUpdatePosition(rotateFn);
     } else {
       const angle = rad(amt * dir);
       const rotation = mat4.fromRotation(mat4.create(), angle, axisV);
@@ -319,7 +332,6 @@ export class Rubik {
   transform = mat4.create();
 
   private readonly animAlpha = 2.25;
-  readonly spread = 1.05;
   private blocks: Block[];
 
   private scrambling = false;
@@ -337,6 +349,7 @@ export class Rubik {
   private movedBlockInfo: null | MovedInfo = null;
   private clickedBlockInfo: null | ClickedInfo = null;
 
+  spread = 1.05;
   blockR = 0.15;
   faceCover = 0.75;
   faceR = 0.15;
@@ -454,6 +467,17 @@ export class Rubik {
       const menu = document.getElementById("sideMenu")!;
       menu.classList.toggle("hidden");
     });
+
+    utils.handleInputById(
+      "spreadRange",
+      ((this.spread - 1) * 20).toString(),
+      "onchange",
+      utils.targetListener((t) => {
+        this.spread = mR(+t.value / 20 + 1, 6);
+        for (let block of this.blocks) block.updatePosition();
+        this.triggerRedraw();
+      })
+    );
 
     for (let id of ["blockR", "faceCover", "faceR", "faceRingW", "faceExtrude"] as const) {
       const s = id == "faceExtrude" ? 200 : 20;
