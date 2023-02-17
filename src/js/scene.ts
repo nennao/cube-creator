@@ -1,12 +1,14 @@
 import { Camera } from "./camera";
 import { SimpleShader } from "./shader";
 import { Rubik } from "./rubik";
+import { EnvironmentRenderer } from "../../lib/pbr/renderer/environment_renderer";
 
 export class Scene {
   private clock = 0;
   private readonly gl: WebGL2RenderingContext;
   readonly camera: Camera;
   readonly cubeShader: SimpleShader;
+  readonly environment: EnvironmentRenderer;
   private readonly changeWatcher: { val: any; get: () => any }[];
 
   private readonly pointerEvents: { activeId: number; cache: PointerEvent[]; prevDiff: number } = {
@@ -19,15 +21,19 @@ export class Scene {
 
   private readonly cube: Rubik;
 
+  environmentLoaded = false;
+
+  get ready() {
+    return this.environmentLoaded;
+  }
+
   constructor(gl: WebGL2RenderingContext, camera: Camera) {
     this.gl = gl;
     this.initGL();
 
-    this.gl.clearColor(0.5, 0.5, 0.5, 1.0);
-    this.gl.clearDepth(1);
-
     this.camera = camera;
     this.cubeShader = new SimpleShader(gl);
+    this.environment = new EnvironmentRenderer(gl, this);
 
     this.changeWatcher = this.initChangeWatcher();
     this.handleInputEvents();
@@ -35,10 +41,13 @@ export class Scene {
     this.cube = new Rubik(gl, this);
   }
 
-  private initGL() {
+  initGL() {
     this.gl.enable(this.gl.DEPTH_TEST);
     this.gl.depthFunc(this.gl.LEQUAL);
     this.gl.cullFace(this.gl.BACK);
+
+    this.gl.clearColor(0.5, 0.5, 0.5, 1.0);
+    this.gl.clearDepth(1);
   }
 
   private handleInputEvents() {
@@ -93,6 +102,9 @@ export class Scene {
     };
 
     canvas.addEventListener("pointerdown", (e) => {
+      if (e.buttons != 1) {
+        return;
+      }
       this.pointerEvents.cache.push(e);
 
       if (this.pointerEvents.cache.length == 2 && !this.cube.manualBlockMoving) {
@@ -179,20 +191,29 @@ export class Scene {
     return false;
   }
 
+  renderAll() {
+    this.environment.drawEnvironmentMap();
+    this.cube.draw();
+  }
+
   render(t: number) {
     const dt = t - this.clock;
+    this.clock = t;
+
+    if (!this.ready) {
+      return;
+    }
+
     this.cube.update(dt);
 
     const play = this.changeWatch();
-
-    this.clock = t;
 
     if (play) {
       this.camera.update();
 
       this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
 
-      this.cube.draw();
+      this.renderAll();
     }
   }
 }

@@ -5,7 +5,7 @@ import VS_SRC from "../../shaders/vs_source.glsl";
 // @ts-ignore
 import FS_SRC from "../../shaders/fs_source.glsl";
 
-class ShaderBase {
+export class ShaderBase {
   private readonly gl: WebGL2RenderingContext;
   private readonly program: WebGLProgram | null = null;
   private readonly uniformLocations: { [key: string]: { type: GLenum; loc: WebGLUniformLocation } } = {};
@@ -105,7 +105,15 @@ class ShaderBase {
     return attribLocation;
   }
 
-  bind(camera: Camera) {
+  lookupUniformLocation(name: string): WebGLUniformLocation | null {
+    const loc = this.uniformLocations[name];
+    if (loc) {
+      return loc.loc;
+    }
+    return null;
+  }
+
+  bind(camera?: Camera) {
     this.gl.useProgram(this.program);
 
     for (let name of Object.keys(this.attribLocations)) {
@@ -118,7 +126,7 @@ class ShaderBase {
     this.setUniforms(camera);
   }
 
-  setUniforms(camera: Camera) {
+  setUniforms(camera?: Camera) {
     console.warn("calling setUniforms on base shader class");
   }
 
@@ -131,11 +139,17 @@ class ShaderBase {
         case gl.FLOAT:
           gl.uniform1f(uniform.loc, value);
           break;
+        case gl.INT:
+          gl.uniform1i(uniform.loc, value);
+          break;
+        case gl.FLOAT_MAT3:
+          gl.uniformMatrix3fv(uniform.loc, false, value);
+          break;
         case gl.FLOAT_MAT4:
           gl.uniformMatrix4fv(uniform.loc, false, value);
           break;
         default:
-          console.warn("couldn't set uniform:", uniform);
+          console.warn("couldn't set uniform:", name, uniform);
       }
     } else {
       console.warn("Unknown uniform: " + name);
@@ -153,6 +167,25 @@ export class SimpleShader extends ShaderBase {
     this.vertexPosition = this.lookupAttribLocationStrict("a_VertexPosition");
     this.vertexColor = this.lookupAttribLocationStrict("a_VertexColor");
     this.vertexNormal = this.lookupAttribLocationStrict("a_VertexNormal");
+  }
+
+  setUniforms(camera: Camera) {
+    this.setUniform("u_ProjectionMatrix", camera.projectionMatrix);
+    this.setUniform("u_ViewMatrix", camera.viewMatrix);
+  }
+}
+
+// @ts-ignore
+import VS_SRC_CUBEMAP from "../../lib/pbr/renderer/shaders/cubemap.vert";
+// @ts-ignore
+import FS_SRC_CUBEMAP from "../../lib/pbr/renderer/shaders/cubemap.frag";
+
+export class CubemapShader extends ShaderBase {
+  readonly vertexPosition: GLint;
+
+  constructor(gl: WebGL2RenderingContext) {
+    super(gl, VS_SRC_CUBEMAP, FS_SRC_CUBEMAP);
+    this.vertexPosition = this.lookupAttribLocationStrict("a_position");
   }
 
   setUniforms(camera: Camera) {
