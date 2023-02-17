@@ -952,14 +952,14 @@ export class Rubik {
   }
 
   private drawBlocks() {
-    this.shader.setUniform1f("u_Opacity", 1);
+    this.shader.setUniform("u_Opacity", 1);
     for (let block of this.blocks) {
       block.draw();
     }
   }
 
   private drawBounds() {
-    this.shader.setUniform1f("u_Opacity", 0.25);
+    this.shader.setUniform("u_Opacity", 0.25);
     for (let bound of this.bounds) {
       bound.draw();
     }
@@ -967,7 +967,7 @@ export class Rubik {
 
   private draw() {
     this.shader.bind(this.camera);
-    this.shader.setUniformMatrix4fv("u_RubikMatrix", this.transform);
+    this.shader.setUniform("u_RubikMatrix", this.transform);
     this.drawBlocks();
     if (this.showBounding) {
       this.drawBounds();

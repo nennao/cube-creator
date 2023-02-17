@@ -1,5 +1,3 @@
-import { mat4 } from "gl-matrix";
-
 import { Camera } from "./camera";
 
 // @ts-ignore
@@ -10,7 +8,7 @@ import FS_SRC from "../../shaders/fs_source.glsl";
 class ShaderBase {
   private readonly gl: WebGL2RenderingContext;
   private readonly program: WebGLProgram | null = null;
-  private readonly uniformLocations: { [key: string]: WebGLUniformLocation } = {};
+  private readonly uniformLocations: { [key: string]: { type: GLenum; loc: WebGLUniformLocation } } = {};
   private readonly attribLocations: { [key: string]: GLint } = {};
 
   protected constructor(gl: WebGL2RenderingContext, vsSource: string, fsSource: string) {
@@ -74,8 +72,13 @@ class ShaderBase {
       return;
     }
     for (let i = 0; i < this.gl.getProgramParameter(this.program, this.gl.ACTIVE_UNIFORMS); i++) {
-      const name = this.gl.getActiveUniform(this.program, i)!.name;
-      this.uniformLocations[name] = this.gl.getUniformLocation(this.program, name)!;
+      const info = this.gl.getActiveUniform(this.program, i);
+      if (info) {
+        this.uniformLocations[info.name] = {
+          type: info.type,
+          loc: this.gl.getUniformLocation(this.program, info.name)!,
+        };
+      }
     }
     for (let i = 0; i < this.gl.getProgramParameter(this.program, this.gl.ACTIVE_ATTRIBUTES); i++) {
       const name = this.gl.getActiveAttrib(this.program, i)!.name;
@@ -117,16 +120,26 @@ class ShaderBase {
 
   setUniforms(camera: Camera) {
     console.warn("calling setUniforms on base shader class");
-    this.setUniformMatrix4fv("u_ProjectionMatrix", camera.projectionMatrix);
-    this.setUniformMatrix4fv("u_ViewMatrix", camera.viewMatrix);
   }
 
-  setUniform1f(name: string, val: number) {
-    this.gl.uniform1f(this.uniformLocations[name], val);
-  }
+  setUniform(name: string, value: any) {
+    const gl = this.gl;
+    const uniform = this.uniformLocations[name];
 
-  setUniformMatrix4fv(name: string, val: mat4) {
-    this.gl.uniformMatrix4fv(this.uniformLocations[name], false, val);
+    if (uniform) {
+      switch (uniform.type) {
+        case gl.FLOAT:
+          gl.uniform1f(uniform.loc, value);
+          break;
+        case gl.FLOAT_MAT4:
+          gl.uniformMatrix4fv(uniform.loc, false, value);
+          break;
+        default:
+          console.warn("couldn't set uniform:", uniform);
+      }
+    } else {
+      console.warn("Unknown uniform: " + name);
+    }
   }
 }
 
@@ -143,7 +156,7 @@ export class SimpleShader extends ShaderBase {
   }
 
   setUniforms(camera: Camera) {
-    this.setUniformMatrix4fv("u_ProjectionMatrix", camera.projectionMatrix);
-    this.setUniformMatrix4fv("u_ViewMatrix", camera.viewMatrix);
+    this.setUniform("u_ProjectionMatrix", camera.projectionMatrix);
+    this.setUniform("u_ViewMatrix", camera.viewMatrix);
   }
 }

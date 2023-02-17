@@ -53,7 +53,7 @@ export class Geometry {
   }
 
   draw(shader: SimpleShader) {
-    shader.setUniformMatrix4fv("u_ModelMatrix", this.transform);
+    shader.setUniform("u_ModelMatrix", this.transform);
 
     this.positions.bind(shader.vertexPosition);
     this.colors.bind(shader.vertexColor);
