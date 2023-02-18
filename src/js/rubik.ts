@@ -432,7 +432,6 @@ export class Rubik {
       })
     );
     utils.handleButtonById("scramble", "onclick", () => this.scramble());
-    utils.handleButtonById("resetCam", "onclick", () => this.resetCam());
     utils.handleButtonById("reset", "onclick", () => this.reset());
 
     utils.handleButtonById("sideMenuButton", "onclick", () => {
@@ -522,7 +521,7 @@ export class Rubik {
     this.rotate(35, [1, 0, 0]);
   }
 
-  private resetCam() {
+  resetCam() {
     this.transform = mat4.create();
     this.initialPosition();
     this.triggerRedraw();
@@ -531,9 +530,7 @@ export class Rubik {
   private reset() {
     this.rotationQueue = [];
     this.scrambling = false;
-    this.transform = mat4.create();
     this.blocks = this.createBlocks();
-    this.initialPosition();
     this.triggerRedraw();
   }
 

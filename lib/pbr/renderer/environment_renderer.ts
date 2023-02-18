@@ -1,9 +1,8 @@
-import { mat4, mat3 } from "gl-matrix";
+import { mat3 } from "gl-matrix";
 import { Buffer, IndexBuffer } from "../../../src/js/buffer";
 import { Camera } from "../../../src/js/camera";
 import { Scene } from "../../../src/js/scene";
 import { CubemapShader } from "../../../src/js/shader";
-import { rad } from "../../../src/js/utils";
 import { loadEnvironment, EnvResources, setTexture } from "./resource_handler";
 
 // @ts-ignore
@@ -18,6 +17,7 @@ class EnvironmentRenderer {
   private readonly positions: Buffer;
   private readonly indices: IndexBuffer;
 
+  private envRotation = mat3.create();
   private resources?: EnvResources;
 
   constructor(gl: WebGL2RenderingContext, scene: Scene) {
@@ -55,6 +55,12 @@ class EnvironmentRenderer {
     ], 3, gl.FLOAT);
   }
 
+  rotate() {
+    // let mat = mat4.create();
+    // mat4.rotateY(mat, mat, rad(0));
+    // mat3.fromMat4(this.envRotation, mat);
+  }
+
   drawEnvironmentMap() {
     const { gl, shader, resources } = this;
 
@@ -69,11 +75,7 @@ class EnvironmentRenderer {
     shader.setUniform("u_EnvBlurNormalized", 0.0);
     // shader.setUniform("u_Exposure", 1.0);
 
-    let rotMatrix4 = mat4.create();
-    mat4.rotateY(rotMatrix4, rotMatrix4, rad(0));
-    let rotMatrix3 = mat3.create();
-    mat3.fromMat4(rotMatrix3, rotMatrix4);
-    shader.setUniform("u_EnvRotation", rotMatrix3);
+    shader.setUniform("u_EnvRotation", this.envRotation);
 
     gl.disable(gl.DEPTH_TEST);
 
@@ -83,6 +85,33 @@ class EnvironmentRenderer {
     gl.drawElements(gl.TRIANGLES, this.indices.indexCount, gl.UNSIGNED_SHORT, 0);
 
     gl.enable(gl.DEPTH_TEST);
+  }
+
+  applyEnvironmentMap(texSlotOffset: number) {
+    const { gl, resources } = this;
+    const { cubeShader: shader } = this.scene;
+
+    if (!resources) {
+      return;
+    }
+
+    const lookup = shader.lookupUniformLocation;
+
+    // setTexture(gl, lookup("u_LambertianEnvSampler") || -1, resources, resources.diffuseEnvMap, texSlotOffset++);
+
+    setTexture(gl, lookup("u_GGXEnvSampler") || -1, resources, resources.specularEnvMap, texSlotOffset++);
+    // setTexture(gl, lookup("u_GGXLUT") || -1, resources, resources.lut, texSlotOffset++);
+
+    // setTexture(gl, lookup("u_CharlieEnvSampler") || -1, resources, resources.sheenEnvMap, texSlotOffset++);
+    // setTexture(gl, lookup("u_CharlieLUT") || -1, resources, resources.sheenLUT, texSlotOffset++);
+
+    shader.setUniform("u_MipCount", resources.mipCount);
+
+    shader.setUniform("u_EnvRotation", this.envRotation);
+
+    shader.setUniform("u_EnvIntensity", 1);
+
+    return texSlotOffset;
   }
 }
 

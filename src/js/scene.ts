@@ -2,6 +2,7 @@ import { Camera } from "./camera";
 import { SimpleShader } from "./shader";
 import { Rubik } from "./rubik";
 import { EnvironmentRenderer } from "../../lib/pbr/renderer/environment_renderer";
+import { handleButtonById, handleInputById, targetListener } from "./utils";
 
 export class Scene {
   private clock = 0;
@@ -22,6 +23,7 @@ export class Scene {
   private readonly cube: Rubik;
 
   environmentLoaded = false;
+  moveCamera = false;
 
   get ready() {
     return this.environmentLoaded;
@@ -36,6 +38,7 @@ export class Scene {
     this.environment = new EnvironmentRenderer(gl, this);
 
     this.changeWatcher = this.initChangeWatcher();
+    this.initDOMInputs();
     this.handleInputEvents();
 
     this.cube = new Rubik(gl, this);
@@ -50,6 +53,23 @@ export class Scene {
     this.gl.clearDepth(1);
   }
 
+  resetCam() {
+    if (this.moveCamera) {
+      this.camera.reset();
+    } else {
+      this.cube.resetCam();
+    }
+  }
+
+  private initDOMInputs() {
+    const moveCamCheck = (t: HTMLInputElement) => {
+      this.moveCamera = t.checked;
+      this.triggerRedraw();
+    };
+    handleInputById("moveCamera", this.moveCamera, "onclick", targetListener(moveCamCheck));
+    handleButtonById("resetCam", "onclick", () => this.resetCam());
+  }
+
   private handleInputEvents() {
     const canvas = this.gl.canvas;
 
@@ -59,7 +79,12 @@ export class Scene {
       }
       if (this.pointerEvents.cache.length == 1) {
         const cap = (n: number) => Math.min(n, 2);
-        this.cube.mouseRotate(cap(e.clientX - this.mouse.x), cap(e.clientY - this.mouse.y));
+        const [dx, dy] = [cap(e.clientX - this.mouse.x), cap(e.clientY - this.mouse.y)];
+        if (this.moveCamera) {
+          this.camera.mouseRotate(dx, dy);
+        } else {
+          this.cube.mouseRotate(dx, dy);
+        }
       }
       this.mouse = { x: e.clientX, y: e.clientY };
     };

@@ -1,6 +1,6 @@
 import { mat4, vec3 } from "gl-matrix";
 
-import { mR, rad } from "./utils";
+import { clamp, mR, rad } from "./utils";
 
 export class Camera {
   private readonly gl: WebGL2RenderingContext;
@@ -16,6 +16,8 @@ export class Camera {
   readonly viewMatrix = mat4.create();
 
   distance = 15;
+  angleX = 0;
+  angleY = 0;
   position: vec3 = [0.0, 0.0, this.distance];
 
   constructor(gl: WebGL2RenderingContext) {
@@ -30,12 +32,33 @@ export class Camera {
 
   update() {
     this.position = [0.0, 0.0, this.distance];
+
+    if (this.angleY) {
+      vec3.rotateX(this.position, this.position, [0, 0, 0], rad(this.angleY));
+    }
+    if (this.angleX) {
+      vec3.rotateY(this.position, this.position, [0, 0, 0], rad(this.angleX));
+    }
+
     mat4.perspective(this.projectionMatrix, this.fov, this.aspect, this.zNear, this.zFar);
     mat4.lookAt(this.viewMatrix, this.position, this.target, this.up);
   }
 
+  mouseRotate(dx: number, dy: number) {
+    this.angleX += dx;
+    this.angleX %= 360;
+
+    this.angleY += dy;
+    this.angleY = clamp(this.angleY, -90, 90);
+  }
+
+  reset() {
+    this.angleX = 0;
+    this.angleY = 0;
+  }
+
   get watcher() {
-    const watching = [this.aspect, this.distance];
+    const watching = [this.aspect, this.distance, this.angleX, this.angleY];
     return watching.join(",");
   }
 

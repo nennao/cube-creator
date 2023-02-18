@@ -139,6 +139,9 @@ export class ShaderBase {
         case gl.FLOAT:
           gl.uniform1f(uniform.loc, value);
           break;
+        case gl.FLOAT_VEC3:
+          gl.uniform3fv(uniform.loc, value);
+          break;
         case gl.INT:
           gl.uniform1i(uniform.loc, value);
           break;
@@ -172,6 +175,7 @@ export class SimpleShader extends ShaderBase {
   setUniforms(camera: Camera) {
     this.setUniform("u_ProjectionMatrix", camera.projectionMatrix);
     this.setUniform("u_ViewMatrix", camera.viewMatrix);
+    this.setUniform("u_ViewPosition", camera.position);
   }
 }
 

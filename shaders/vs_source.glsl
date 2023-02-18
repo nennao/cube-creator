@@ -11,11 +11,14 @@ in vec3 a_VertexNormal;
 
 out vec3 v_Color;
 out vec3 v_Normal;
+out vec3 v_FragPosition;
 
 
 void main() {
-    gl_Position = u_ProjectionMatrix * u_ViewMatrix *  u_RubikMatrix * u_ModelMatrix * a_VertexPosition;
+    vec4 position = u_RubikMatrix * u_ModelMatrix * a_VertexPosition;
+    gl_Position = u_ProjectionMatrix * u_ViewMatrix * position;
 
     v_Color = a_VertexColor;
     v_Normal = normalize(mat3(u_RubikMatrix * u_ModelMatrix) * a_VertexNormal);
+    v_FragPosition = position.xyz;
 }
