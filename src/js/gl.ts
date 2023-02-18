@@ -1,12 +1,12 @@
 function initGL(canvas: HTMLCanvasElement): WebGL2RenderingContext | null {
-  const gl: WebGL2RenderingContext | null = canvas.getContext("webgl2", { alpha: false });
+  const gl: WebGL2RenderingContext | null = canvas.getContext("webgl2", { alpha: false, antialias: true });
 
   if (gl == null) {
     alert("Unable to initialize WebGL2. Your browser or machine may not support it.");
     return null;
   }
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  // gl.enable(gl.BLEND);
+  // gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   gl.enable(gl.CULL_FACE);
   return gl;
 }
