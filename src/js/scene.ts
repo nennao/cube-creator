@@ -2,7 +2,7 @@ import { Camera } from "./camera";
 import { SimpleShader } from "./shader";
 import { Rubik } from "./rubik";
 import { EnvironmentRenderer } from "../../lib/pbr/renderer/environment_renderer";
-import { handleButtonById, handleInputById, targetListener } from "./utils";
+import { handleButtonById, handleFpsDisplay, handleInputById, targetListener } from "./utils";
 
 export class Scene {
   private clock = 0;
@@ -144,9 +144,11 @@ export class Scene {
           const blockClicked = this.cube.findClickedBlock(e.clientX, e.clientY);
 
           if (blockClicked) {
-            window.addEventListener("pointermove", mousemoveBlockHandler);
-            window.addEventListener("pointerup", mouseupBlockHandler);
-            window.addEventListener("pointercancel", mouseupBlockHandler);
+            if (!this.cube.rotating) {
+              window.addEventListener("pointermove", mousemoveBlockHandler);
+              window.addEventListener("pointerup", mouseupBlockHandler);
+              window.addEventListener("pointercancel", mouseupBlockHandler);
+            }
           } else {
             window.addEventListener("pointermove", mousemoveRotateHandler);
             window.addEventListener("pointerup", mouseupRotateHandler);
@@ -232,6 +234,8 @@ export class Scene {
     this.cube.update(dt);
 
     const play = this.changeWatch();
+
+    handleFpsDisplay(dt, play);
 
     if (play) {
       this.camera.update();

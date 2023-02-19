@@ -1,4 +1,4 @@
-import { mat4, quat, vec2, vec3 } from "gl-matrix";
+import { mat3, mat4, quat, vec2, vec3 } from "gl-matrix";
 
 import { Camera } from "./camera";
 import { Geometry } from "./geometry";
@@ -299,7 +299,7 @@ class Block {
           x: vec3.rotateX,
           y: vec3.rotateY,
           z: vec3.rotateZ,
-        }[axis](vec3.create(), pos, axisV, rad(90 * dir * turns)));
+        }[axis](vec3.create(), pos, [0, 0, 0], rad(90 * dir * turns)));
       this.rotateUpdatePosition(rotateFn);
     } else {
       const angle = rad(amt * dir);
@@ -313,6 +313,7 @@ class Block {
   }
 
   draw() {
+    this.root.shader.setUniform("u_BlockPosition", this.position);
     this.geometry.draw(this.root.shader);
     for (let face of this.faces) {
       face.draw();
@@ -330,6 +331,8 @@ export class Rubik {
   private rotationQueue: RotQueueItem[] = [];
 
   transform = mat4.create();
+  invTransform = mat4.create();
+  invTransform3 = mat3.create();
 
   private readonly animAlpha = 2.25;
   private blocks: Block[];
@@ -337,14 +340,16 @@ export class Rubik {
   private scrambling = false;
   private showBounding = false;
 
-  private readonly boundingBox: [Axis, Side, TriVec3[]][];
-  private readonly bounds: FaceBounds[];
+  private boundingBox: [Axis, Side, TriVec3[]][] | undefined;
+  private bounds: FaceBounds[] | undefined;
 
   manualBlockMoving = false;
 
   private moveBlockInfo: null | MoveInfo = null;
   private movedBlockInfo: null | MovedInfo = null;
   private clickedBlockInfo: null | ClickedInfo = null;
+
+  blockRays = true;
 
   spread = 1.05;
   blockR = 0.15;
@@ -363,11 +368,15 @@ export class Rubik {
   }
 
   get boundingPlanes(): [Axis, Side, TriVec3[]][] {
-    return this.boundingBox.map(([axis, side, triangles]) => [
+    return (this.boundingBox || []).map(([axis, side, triangles]) => [
       axis,
       side,
       triangles.map((t) => utils.transformTriangle(t, this.transform)),
     ]);
+  }
+
+  get rotating() {
+    return this.rotationQueue.length > 0;
   }
 
   constructor(gl: WebGL2RenderingContext, scene: Scene) {
@@ -377,9 +386,7 @@ export class Rubik {
     this.camera = scene.camera;
     this.shader = scene.cubeShader;
 
-    const [bBox, bBounds] = this.getBoundingBox();
-    this.boundingBox = bBox;
-    this.bounds = bBounds;
+    this.updateBoundingBox();
 
     this.blocks = this.createBlocks();
 
@@ -401,7 +408,7 @@ export class Rubik {
     return blocks;
   }
 
-  private getBoundingBox(): [[Axis, Side, TriVec3[]][], FaceBounds[]] {
+  private updateBoundingBox() {
     const res = [];
     const bounds = [];
     const { cubeR } = this;
@@ -418,10 +425,20 @@ export class Rubik {
         bounds.push(new FaceBounds(new Geometry(this.gl, vertices, colors, i), this));
       }
     }
-    return [res, bounds];
+    this.boundingBox = res;
+    this.bounds = bounds;
   }
 
   private initDOMInputs() {
+    utils.handleInputById(
+      "blockRays",
+      this.blockRays,
+      "onclick",
+      utils.targetListener((t) => {
+        this.blockRays = t.checked;
+        this.triggerRedraw();
+      })
+    );
     utils.handleInputById(
       "boundsCheck",
       this.showBounding,
@@ -445,6 +462,7 @@ export class Rubik {
       "onchange",
       utils.targetListener((t) => {
         this.spread = mR(+t.value / 20 + 1, 6);
+        this.updateBoundingBox();
         for (let block of this.blocks) block.updatePosition();
         this.triggerRedraw();
       })
@@ -492,6 +510,7 @@ export class Rubik {
   private rotate(angle: number, rotAxis: vec3) {
     const rotation = mat4.fromRotation(mat4.create(), rad(angle), rotAxis);
     mat4.multiply(this.transform, rotation, this.transform);
+    mat4.invert(this.invTransform, this.transform);
     this.triggerRedraw();
   }
 
@@ -523,6 +542,7 @@ export class Rubik {
 
   resetCam() {
     this.transform = mat4.create();
+    this.invTransform = mat4.create();
     this.initialPosition();
     this.triggerRedraw();
   }
@@ -578,7 +598,7 @@ export class Rubik {
   }
 
   private inverseDisplayTransform(position: vec3) {
-    return vec3.transformMat4(vec3.create(), position, mat4.invert(mat4.create(), this.transform));
+    return vec3.transformMat4(vec3.create(), position, this.invTransform);
   }
 
   findClickedBlock(x: number, y: number): boolean {
@@ -658,9 +678,8 @@ export class Rubik {
       const normal = this.displayTransform(getAxisVector(axis, side));
       const center = vec3.scale(vec3.create(), normal, this.cubeR);
       this.clickedBlockInfo = { axis, side, block, p, normal, center };
-      return true;
     }
-    return false;
+    return true;
   }
 
   handleMousemoveBlock(x: number, y: number, x0: number, y0: number) {
@@ -793,16 +812,29 @@ export class Rubik {
     return getAxisAndSide(rotAxis);
   }
 
+  private getCurrentSliceMoveDetails() {
+    let axis: Axis, level: Level, dir: Dir;
+
+    if (this.movedBlockInfo) {
+      ({ axis, level, side: dir } = this.movedBlockInfo);
+    } else if (this.rotationQueue.length) {
+      ({ axis, level, dir } = this.rotationQueue[0]);
+    } else {
+      return { currAngle: 0, axis: Axis.x, level: Level.z0, dir: Dir.ccw };
+    }
+
+    const block = this.blocks.find((block) => block.position[["x", "y", "z"].indexOf(axis)] == level);
+    let blockAngle = block
+      ? deg(Math.abs(quat.getAxisAngle(vec3.create(), mat4.getRotation(quat.create(), block.geometry.transform))))
+      : 0;
+    blockAngle = blockAngle > 180 ? 360 - blockAngle : blockAngle;
+    const currAngle = block ? blockAngle : this.moveBlockInfo ? this.moveBlockInfo.currAngle : 0;
+    return { currAngle, axis, level, dir };
+  }
+
   cleanupMousemoveBlock() {
     if (this.movedBlockInfo) {
-      const { axis, level, side: dir } = this.movedBlockInfo;
-
-      const block = this.blocks.find((block) => block.position[["x", "y", "z"].indexOf(axis)] == level);
-      let blockAngle = block
-        ? deg(Math.abs(quat.getAxisAngle(vec3.create(), mat4.getRotation(quat.create(), block.geometry.transform))))
-        : 0;
-      blockAngle = blockAngle > 180 ? 360 - blockAngle : blockAngle;
-      const currAngle = block ? blockAngle : this.moveBlockInfo ? this.moveBlockInfo.currAngle : 0;
+      const { currAngle, axis, level, dir } = this.getCurrentSliceMoveDetails();
 
       const remA = currAngle - (currAngle > 90 ? 90 : 0);
       const reverse = remA < 45;
@@ -830,14 +862,26 @@ export class Rubik {
 
   private drawBounds() {
     this.shader.setUniform("u_Opacity", 0.25);
-    for (let bound of this.bounds) {
+    for (let bound of this.bounds || []) {
       bound.draw();
     }
   }
 
+  private setUniforms() {
+    const { currAngle, axis, level, dir } = this.getCurrentSliceMoveDetails();
+    this.shader.setUniform("u_BlockR", this.blockR);
+    this.shader.setUniform("u_Spread", this.spread);
+    this.shader.setUniform("u_CurrAngle", rad(currAngle) * dir);
+    this.shader.setUniform("u_Axis", ["x", "y", "z"].indexOf(axis));
+    this.shader.setUniform("u_Level", level);
+    this.shader.setUniform("u_RubikMatrix", this.transform);
+    this.shader.setUniform("u_RubikMatrixInv", mat3.fromMat4(this.invTransform3, this.invTransform));
+    this.shader.setUniform("u_EnableBlocking", this.blockRays ? 1 : 0);
+  }
+
   draw() {
     this.shader.bind(this.camera);
-    this.shader.setUniform("u_RubikMatrix", this.transform);
+    this.setUniforms();
     this.drawBlocks();
     if (this.showBounding) {
       this.drawBounds();

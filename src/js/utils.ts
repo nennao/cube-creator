@@ -95,6 +95,20 @@ export function handleButtonById(id: string, type: InputEvents, listener: (e: Ev
   }
 }
 
+export function handleFpsDisplay(dt: number, play: boolean) {
+  const fpsTxt = document.getElementById("fpsTxt");
+  if (!fpsTxt) {
+    return;
+  }
+
+  fpsTxt.innerText = mR(1 / dt, 2).toString();
+  if (play) {
+    fpsTxt.classList.remove("faded");
+  } else {
+    fpsTxt.classList.add("faded");
+  }
+}
+
 export type V3 = [number, number, number];
 
 export function vec3ToV3(v: vec3): V3 {

@@ -5,6 +5,22 @@ body {
   overflow: hidden;
 }
 
+#fps {
+  font-family: monospace;
+  position: fixed;
+  top: 0;
+  left: 0;
+  background: #00000088;
+  color: white;
+}
+#fpsTxt {
+  font-weight: bold;
+}
+#fpsTxt.faded {
+  font-weight: normal;
+  opacity: 0.4;
+}
+
 #canvasCont {
   width: 100vw;
   height: 100vh;

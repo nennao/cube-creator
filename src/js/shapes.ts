@@ -248,6 +248,7 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
   const edgeIndices: [[number, number][], [number, number][], [number, number][]] = [[], [], []];
 
   const storeEdgeP = (p: PosAndEdge, i: number) => {
+    if (sphere) return;
     for (let edgeI of p.edge) {
       edgeIndices[edgeI].push([vec3.distance(p.pos, positions[edgeI].pos), i]);
     }
@@ -264,6 +265,7 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
   const positionsTransformed: [V3[], V3[], V3[], V3[], V3[], V3[], V3[], V3[]] = [[], [], [], [], [], [], [], []];
 
   const addTransformedPositions = (pos: PosAndEdge) => {
+    if (sphere) return;
     const top = getTopPos(pos.pos);
     const bot = getBottomPos(top);
     const [top1, top2, top3] = [rotate90Pos(top), rotate180Pos(top), rotate270Pos(top)];
@@ -313,6 +315,22 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
     }
   };
 
+  if (sphere) {
+    positions.push({ pos: [0, 0, -s], edge: [] }, { pos: [-s, 0, 0], edge: [] }, { pos: [0, -s, 0], edge: [] });
+
+    subdivideTriangle(0, 1, 2, 1);
+    subdivideTriangle(1, 3, 2, 1);
+    subdivideTriangle(3, 4, 2, 1);
+    subdivideTriangle(4, 0, 2, 1);
+
+    subdivideTriangle(1, 0, 5, 1);
+    subdivideTriangle(3, 1, 5, 1);
+    subdivideTriangle(4, 3, 5, 1);
+    subdivideTriangle(0, 4, 5, 1);
+
+    return [positions.map((p) => vec3ToV3(p.pos)), indices];
+  }
+
   rounded && subdivideTriangle(0, 1, 2, 1);
 
   // get positions and indices for all corner triangles
@@ -324,45 +342,41 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
 
   const flat = [];
 
-  if (!sphere) {
-    edgeIndices.forEach((edge) => edge.sort((a, b) => a[0] - b[0]));
-    const [edge0Points_, edge1Points_, edge2Points_] = edgeIndices;
-    const edge0PointsR = [...edge0Points_].reverse();
-    const edge1PointsR = [...edge1Points_].reverse();
-    const edge2PointsR = [...edge2Points_].reverse();
+  edgeIndices.forEach((edge) => edge.sort((a, b) => a[0] - b[0]));
+  const [edge0Points_, edge1Points_, edge2Points_] = edgeIndices;
+  const edge0PointsR = [...edge0Points_].reverse();
+  const edge1PointsR = [...edge1Points_].reverse();
+  const edge2PointsR = [...edge2Points_].reverse();
 
-    const tops = [];
-    const bots = [];
+  const tops = [];
+  const bots = [];
 
-    for (let turn of [0, 1, 2, 3]) {
-      const getBatch = (i: number) => (turn * 2 + i) % 8;
-      const [top0, bot0, top1, bot1] = [getBatch(0), getBatch(1), getBatch(2), getBatch(3)];
-      tops.push(getIndex(2, top0));
-      bots.push(getIndex(2, bot0));
+  for (let turn of [0, 1, 2, 3]) {
+    const getBatch = (i: number) => (turn * 2 + i) % 8;
+    const [top0, bot0, top1, bot1] = [getBatch(0), getBatch(1), getBatch(2), getBatch(3)];
+    tops.push(getIndex(2, top0));
+    bots.push(getIndex(2, bot0));
 
-      if (rounded) {
-        const verticalEdgePoints1 = edge0Points_.map(([_, i]) => getIndex(i, top0));
-        const verticalEdgePoints2 = edge0PointsR.map(([_, i]) => getIndex(i, bot0));
+    if (rounded) {
+      const verticalEdgePoints1 = edge0Points_.map(([_, i]) => getIndex(i, top0));
+      const verticalEdgePoints2 = edge0PointsR.map(([_, i]) => getIndex(i, bot0));
 
-        const horizEdgeTopPoints1 = edge1Points_.map(([_, i]) => getIndex(i, top0));
-        const horizEdgeTopPoints2 = edge2PointsR.map(([_, i]) => getIndex(i, top1));
+      const horizEdgeTopPoints1 = edge1Points_.map(([_, i]) => getIndex(i, top0));
+      const horizEdgeTopPoints2 = edge2PointsR.map(([_, i]) => getIndex(i, top1));
 
-        const horizEdgeBotPoints1 = edge2Points_.map(([_, i]) => getIndex(i, bot0));
-        const horizEdgeBotPoints2 = edge1PointsR.map(([_, i]) => getIndex(i, bot1));
+      const horizEdgeBotPoints1 = edge2Points_.map(([_, i]) => getIndex(i, bot0));
+      const horizEdgeBotPoints2 = edge1PointsR.map(([_, i]) => getIndex(i, bot1));
 
-        allIndices.push(...indexRowsToTriangles(verticalEdgePoints1, verticalEdgePoints2));
-        allIndices.push(...indexRowsToTriangles(horizEdgeTopPoints1, horizEdgeTopPoints2));
-        allIndices.push(...indexRowsToTriangles(horizEdgeBotPoints1, horizEdgeBotPoints2));
-      }
-
-      flat.push(
-        ...indexRowsToTriangles([getIndex(1, top0), getIndex(0, top1)], [getIndex(0, bot0), getIndex(1, bot1)])
-      );
+      allIndices.push(...indexRowsToTriangles(verticalEdgePoints1, verticalEdgePoints2));
+      allIndices.push(...indexRowsToTriangles(horizEdgeTopPoints1, horizEdgeTopPoints2));
+      allIndices.push(...indexRowsToTriangles(horizEdgeBotPoints1, horizEdgeBotPoints2));
     }
-    flat.push(...indexRowsToTriangles([tops[3], tops[2]], [tops[0], tops[1]]));
-    flat.push(...indexRowsToTriangles([bots[0], bots[1]], [bots[3], bots[2]]));
-    allIndices.push(...flat);
+
+    flat.push(...indexRowsToTriangles([getIndex(1, top0), getIndex(0, top1)], [getIndex(0, bot0), getIndex(1, bot1)]));
   }
+  flat.push(...indexRowsToTriangles([tops[3], tops[2]], [tops[0], tops[1]]));
+  flat.push(...indexRowsToTriangles([bots[0], bots[1]], [bots[3], bots[2]]));
+  allIndices.push(...flat);
 
   // return convertToFacePositions(allPositions, allIndices);
   return [allPositions, allIndices];
