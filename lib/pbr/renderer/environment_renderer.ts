@@ -89,18 +89,18 @@ class EnvironmentRenderer {
 
   applyEnvironmentMap(texSlotOffset: number) {
     const { gl, resources } = this;
-    const { cubeShader: shader } = this.scene;
+    const { activeShader: shader } = this.scene;
 
     if (!resources) {
       return;
     }
 
-    const lookup = shader.lookupUniformLocation;
+    const lookup = shader.lookupUniformLocation.bind(shader);
 
-    // setTexture(gl, lookup("u_LambertianEnvSampler") || -1, resources, resources.diffuseEnvMap, texSlotOffset++);
+    setTexture(gl, lookup("u_LambertianEnvSampler") || -1, resources, resources.diffuseEnvMap, texSlotOffset++);
 
     setTexture(gl, lookup("u_GGXEnvSampler") || -1, resources, resources.specularEnvMap, texSlotOffset++);
-    // setTexture(gl, lookup("u_GGXLUT") || -1, resources, resources.lut, texSlotOffset++);
+    setTexture(gl, lookup("u_GGXLUT") || -1, resources, resources.lut, texSlotOffset++);
 
     // setTexture(gl, lookup("u_CharlieEnvSampler") || -1, resources, resources.sheenEnvMap, texSlotOffset++);
     // setTexture(gl, lookup("u_CharlieLUT") || -1, resources, resources.sheenLUT, texSlotOffset++);

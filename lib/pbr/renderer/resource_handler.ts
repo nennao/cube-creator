@@ -55,10 +55,11 @@ export function setTexture(
   loc: WebGLUniformLocation,
   gltf: Resources,
   textureIdx: number,
-  texSlot: number
+  texSlot: number,
+  name = ""
 ) {
   if (loc == -1) {
-    console.warn("uniform location not found");
+    console.warn("uniform location not found", name, textureIdx, texSlot);
     return false;
   }
 

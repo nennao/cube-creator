@@ -142,6 +142,9 @@ export class ShaderBase {
         case gl.FLOAT_VEC3:
           gl.uniform3fv(uniform.loc, value);
           break;
+        case gl.FLOAT_VEC4:
+          gl.uniform4fv(uniform.loc, value);
+          break;
         case gl.INT:
           gl.uniform1i(uniform.loc, value);
           break;

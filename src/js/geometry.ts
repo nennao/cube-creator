@@ -3,6 +3,7 @@ import { mat4, vec3 } from "gl-matrix";
 import { Buffer, IndexBuffer } from "./buffer";
 import { SimpleShader } from "./shader";
 import { V3, vec3ToV3 } from "./utils";
+import { PBRShader } from "../../lib/pbr/renderer/pbr_shader";
 
 function calculateNormals(positions: V3[], indices: V3[]) {
   const normals = Array.from({ length: positions.length }, () => vec3.create());
@@ -52,7 +53,7 @@ export class Geometry {
     this.indices.write(indices.flat());
   }
 
-  draw(shader: SimpleShader) {
+  draw(shader: SimpleShader | PBRShader) {
     shader.setUniform("u_ModelMatrix", this.transform);
 
     this.positions.bind(shader.vertexPosition);

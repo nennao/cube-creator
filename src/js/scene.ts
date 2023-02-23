@@ -3,6 +3,7 @@ import { SimpleShader } from "./shader";
 import { Rubik } from "./rubik";
 import { EnvironmentRenderer } from "../../lib/pbr/renderer/environment_renderer";
 import { handleButtonById, handleFpsDisplay, handleInputById, targetListener } from "./utils";
+import { PBRShader } from "../../lib/pbr/renderer/pbr_shader";
 
 export class Scene {
   private clock = 0;
@@ -10,6 +11,8 @@ export class Scene {
   readonly camera: Camera;
   readonly cubeShader: SimpleShader;
   readonly environment: EnvironmentRenderer;
+  readonly pbrShader: PBRShader;
+  activeShader: SimpleShader | PBRShader;
   private readonly changeWatcher: { val: any; get: () => any }[];
 
   private readonly pointerEvents: { activeId: number; cache: PointerEvent[]; prevDiff: number } = {
@@ -36,6 +39,9 @@ export class Scene {
     this.camera = camera;
     this.cubeShader = new SimpleShader(gl);
     this.environment = new EnvironmentRenderer(gl, this);
+    this.pbrShader = new PBRShader(gl);
+    // this.activeShader = this.cubeShader;
+    this.activeShader = this.pbrShader;
 
     this.changeWatcher = this.initChangeWatcher();
     this.initDOMInputs();

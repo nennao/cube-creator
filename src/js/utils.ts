@@ -68,6 +68,10 @@ export function arrayRange(len: number, start = 0) {
   return Array.from({ length: len }, (_, i) => i + start);
 }
 
+export function zip<T1, T2>(arr1: T1[], arr2: T2[]) {
+  return arr1.map((a, i): [T1, T2] => [a, arr2[i]]);
+}
+
 export function targetListener(listener: (t: HTMLInputElement) => void) {
   return (e: Event) => {
     listener(e.target as HTMLInputElement);
@@ -124,6 +128,22 @@ export function getTriangles(vertices: V3[], indices: V3[]): TriVec3[] {
 export function transformTriangle(triangle: TriVec3, transform: mat4): TriVec3 {
   const f = (t: vec3) => vec3.transformMat4(vec3.create(), t, transform);
   return [f(triangle[0]), f(triangle[1]), f(triangle[2])];
+}
+
+export function subdivideIndexRows(
+  row1: number[],
+  row2: number[],
+  subdivisions: number,
+  positions: V3[]
+): [V3[][], number[][]] {
+  const zipped = zip(row1, row2);
+  const newPositions = Array.from({ length: subdivisions }, (_, i) =>
+    zipped.map(([i1, i2]) =>
+      vec3ToV3(vec3.lerp(vec3.create(), positions[i1], positions[i2], (i + 1) / (subdivisions + 1)))
+    )
+  );
+  const newIndices = Array.from(newPositions, (p, i) => arrayRange(p.length, positions.length + i * p.length));
+  return [newPositions, newIndices];
 }
 
 export function indexRowsToTriangles(row1: number[], row2: number[], ring = false): V3[] {
