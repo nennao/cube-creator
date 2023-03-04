@@ -1,13 +1,14 @@
-import { mat3 } from "gl-matrix";
+import { mat3, mat4 } from "gl-matrix";
 import { Buffer, IndexBuffer } from "../../../src/js/buffer";
 import { Camera } from "../../../src/js/camera";
 import { Scene } from "../../../src/js/scene";
 import { CubemapShader } from "../../../src/js/shader";
+import { rad } from "../../../src/js/utils";
+
 import { loadEnvironment, EnvResources, setTexture } from "./resource_handler";
 
 // @ts-ignore
 import hdrFile from "url:../../../assets/environments/Colorful_Studio.hdr";
-
 class EnvironmentRenderer {
   private readonly gl: WebGL2RenderingContext;
   private readonly scene: Scene;
@@ -53,12 +54,14 @@ class EnvironmentRenderer {
        1,  1,  1,
       -1,  1,  1,
     ], 3, gl.FLOAT);
+    this.rotate();
   }
 
   rotate() {
-    // let mat = mat4.create();
-    // mat4.rotateY(mat, mat, rad(0));
-    // mat3.fromMat4(this.envRotation, mat);
+    let mat = mat4.create();
+    mat4.rotateY(mat, mat, rad(155));
+    mat4.rotateX(mat, mat, rad(-15));
+    mat3.fromMat4(this.envRotation, mat);
   }
 
   drawEnvironmentMap() {

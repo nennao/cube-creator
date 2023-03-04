@@ -7,6 +7,8 @@ import primitiveShader from "./shaders/primitive.vert";
 // @ts-ignore
 import pbrShader from "./shaders/pbr.frag";
 // @ts-ignore
+import utilsShader from "./shaders/utils.glsl";
+// @ts-ignore
 import brdfShader from "./shaders/brdf.glsl";
 // @ts-ignore
 import materialInfoShader from "./shaders/material_info.glsl";
@@ -91,6 +93,7 @@ export class PBRShader extends ShaderBase {
     shaderSources.set("primitive.vert", primitiveShader);
     shaderSources.set("pbr.frag", pbrShader);
     shaderSources.set("material_info.glsl", materialInfoShader);
+    shaderSources.set("utils.glsl", utilsShader);
     shaderSources.set("brdf.glsl", brdfShader);
     shaderSources.set("ibl.glsl", iblShader);
     shaderSources.set("tonemapping.glsl", tonemappingShader);
@@ -99,7 +102,13 @@ export class PBRShader extends ShaderBase {
 
     completeShaderSrc(shaderSources);
     const vsDefines = ["HAS_NORMAL_VEC3 1", "HAS_COLOR_0_VEC3"];
-    const fsDefines = ["USE_IBL 1", "MATERIAL_METALLICROUGHNESS 1"].concat(vsDefines, getDebugDefines());
+    const fsDefines = [
+      "USE_IBL 1",
+      "MATERIAL_METALLICROUGHNESS 1",
+      "TONEMAP_ACES_NARKOWICZ 1",
+      "TONEMAP_ACES_HILL 2",
+      "TONEMAP_ACES_HILL_EXPOSURE_BOOST 3",
+    ].concat(vsDefines, getDebugDefines());
     // const fsDefines = vsDefines;
     const vsSrc = selectShader(shaderSources, "primitive.vert", vsDefines);
     const fsSrc = selectShader(shaderSources, "pbr.frag", fsDefines);

@@ -1,4 +1,5 @@
 uniform float u_Exposure;
+uniform int u_Tone;
 
 
 const float GAMMA = 2.2;
@@ -36,6 +37,11 @@ vec3 linearTosRGB(vec3 color)
 vec3 sRGBToLinear(vec3 srgbIn)
 {
     return vec3(pow(srgbIn.xyz, vec3(GAMMA)));
+}
+
+float sRGBToLinearF(float srgbIn)
+{
+    return pow(srgbIn, GAMMA);
 }
 
 
@@ -89,21 +95,31 @@ vec3 toneMap(vec3 color)
 {
     color *= u_Exposure;
 
-#ifdef TONEMAP_ACES_NARKOWICZ
+if (u_Tone == TONEMAP_ACES_NARKOWICZ) {
     color = toneMapACES_Narkowicz(color);
-#endif
+}
 
-#ifdef TONEMAP_ACES_HILL
+if (u_Tone == TONEMAP_ACES_HILL) {
     color = toneMapACES_Hill(color);
-#endif
+}
 
-#ifdef TONEMAP_ACES_HILL_EXPOSURE_BOOST
+if (u_Tone == TONEMAP_ACES_HILL_EXPOSURE_BOOST) {
     // boost exposure as discussed in https://github.com/mrdoob/three.js/pull/19621
     // this factor is based on the exposure correction of Krzysztof Narkowicz in his
     // implemetation of ACES tone mapping
     color /= 0.6;
     color = toneMapACES_Hill(color);
-#endif
+}
 
     return linearTosRGB(color);
+}
+
+vec3 desaturate(vec3 color) {
+    float greyAmt = 0.75;
+    float grey = color.g*0.59 + color.r*0.3 + color.b*0.11;
+    return mix(color, vec3(grey), greyAmt);
+}
+
+vec4 desaturate(vec4 color) {
+    return vec4(desaturate(color.rgb), color.a);
 }

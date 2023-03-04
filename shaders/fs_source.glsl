@@ -2,6 +2,8 @@
 
 precision highp float;
 
+#define PI 3.1415926535897932384626433832795
+
 
 uniform float u_Opacity;
 uniform vec3 u_ViewPosition;
@@ -13,8 +15,10 @@ uniform int u_Axis;
 uniform int u_Level;
 
 uniform int u_EnableBlocking;
+uniform int u_EnableBlockingAO;
 
 uniform vec3 u_BlockPosition;
+uniform mat4 u_RubikMatrix;
 uniform mat3 u_RubikMatrixInv;
 
 uniform samplerCube u_GGXEnvSampler;
@@ -34,10 +38,18 @@ vec3 toneMap(vec3 color) {
     return pow(color, vec3(1.0/2.2));
 }
 
-bool _blockIntersection(vec3 rayDir) {
-    return blockIntersection(
-        u_RubikMatrixInv, v_FragPosition, rayDir, u_BlockPosition, u_BlockR, u_Spread, u_CurrAngle, u_Axis, u_Level
-    );
+
+float _blockAO() {
+//    return u_EnableBlockingAO == 1 ? blockAO(
+//        u_RubikMatrixInv, v_FragPosition, u_BlockPosition, u_BlockR, u_Spread, u_CurrAngle, u_Axis, u_Level
+//    ) : 1.0;
+    return 1.0;
+}
+
+float _blockIntersection(vec3 rayDir, out vec3 outReflect) {
+    return u_EnableBlocking == 1 ? blockIntersection(
+        outReflect, mat3(u_RubikMatrix), u_RubikMatrixInv, v_FragPosition, rayDir, u_BlockPosition, u_BlockR, u_Spread, u_CurrAngle, u_Axis, u_Level
+    ) : -1.0;
 }
 
 void main() {
@@ -50,10 +62,12 @@ void main() {
     // reflection
     vec3 viewDir = normalize(u_ViewPosition - v_FragPosition);
     vec3 reflectVector = reflect(-viewDir, normalize(normal));
-    bool blocked = u_EnableBlocking == 1 ? _blockIntersection(reflectVector) : false;
+
+    float t = _blockIntersection(reflectVector, reflectVector);
+    float ao = _blockAO();
 
     vec3 reflection = toneMap(textureLod(u_GGXEnvSampler, reflectVector, 0.0).rgb);
-    vec3 someReflection = (blocked ? 0.00 : 0.25) * reflection;
+    vec3 someReflection = 0.75 * reflection;
 
     // ambient
     vec3 ambient = vec3(0.3);
@@ -65,7 +79,7 @@ void main() {
     vec3 lighting = ambient + diffuse;
 
     vec3 finalColor = lighting * v_Color + someReflection;
-
+    finalColor *= ao;
 
     fragColor = vec4(finalColor, u_Opacity);
 

@@ -5,6 +5,7 @@ uniform mat4 u_ModelMatrix;
 
 in vec3 a_position;
 out vec3 v_Position;
+out vec3 v_PositionOrig;
 
 in vec3 a_normal;
 out vec3 v_Normal;
@@ -21,7 +22,8 @@ void main()
 {
     gl_PointSize = 1.0f;
     vec4 pos = u_RubikMatrix * u_ModelMatrix * vec4(a_position, 1.0);
-    v_Position = vec3(pos.xyz) / pos.w;
+    v_Position = pos.xyz;
+    v_PositionOrig = a_position;
 
     v_Normal = normalize(vec3(u_RubikMatrix * u_ModelMatrix * vec4(a_normal, 0.0)));
 

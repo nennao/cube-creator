@@ -1,8 +1,7 @@
-import { mat3, mat4, quat, vec2, vec3 } from "gl-matrix";
+import { mat3, mat4, vec2, vec3 } from "gl-matrix";
 
 import { Camera } from "./camera";
 import { Geometry } from "./geometry";
-import { SimpleShader } from "./shader";
 import { cubeData, extrudedRingData, roundedCubeData, squareData } from "./shapes";
 import * as utils from "./utils";
 import { acosC, clamp, deg, max, min, mR, rad, randInt, vec3ToV3, ShallowNormalsInfo, TriVec3, V3 } from "./utils";
@@ -74,9 +73,9 @@ function getFaceColors(faceId: FaceId, vertexCount: number): V3[] {
   //   [FaceId.B]: [1, 1, 0], [FaceId.F]: [0, 0, 1],
   // };
   const colorMap = {
-    [FaceId.L]: [0.8, 0.4, 0.0], [FaceId.R]: [0.6, 0.0, 0.0],
-    [FaceId.D]: [0.9, 0.9, 0.1], [FaceId.U]: [0.9, 0.9, 0.9],
-    [FaceId.B]: [0.0, 0.2, 0.5], [FaceId.F]: [0.0, 0.4, 0.1],
+    [FaceId.L]: [0.70, 0.30, 0.00], [FaceId.R]: [0.60, 0.00, 0.10],
+    [FaceId.D]: [0.90, 0.90, 0.15], [FaceId.U]: [0.85, 0.88, 0.90],
+    [FaceId.B]: [0.00, 0.20, 0.55], [FaceId.F]: [0.00, 0.45, 0.22],
   };
   const color = colorMap[faceId];
   return Array(vertexCount).fill(color);
@@ -114,6 +113,21 @@ type RotQueueItem = {
   elapsedT: number;
   turns: number;
   reverse?: boolean;
+};
+
+type Material = {
+  baseColor: [number, number, number, number];
+  metallic: number;
+  roughness: number;
+};
+
+const MATERIALS: { [key: string]: Material } = {
+  matRadioP1: { baseColor: [0.08, 0.08, 0.08, 1], metallic: 0, roughness: 0.4 },
+  matRadioP2: { baseColor: [0.08, 0.08, 0.08, 1], metallic: 0, roughness: 0.05 },
+  matRadioSt: { baseColor: [0.7, 0.7, 0.7, 1], metallic: 1, roughness: 0.05 },
+  matRadioGo: { baseColor: [1.0, 0.9, 0.6, 1], metallic: 1, roughness: 0.2 },
+  matRadioRG: { baseColor: [1.0, 0.7, 0.6, 1], metallic: 1, roughness: 0.2 },
+  matRadioSi: { baseColor: [0.99, 0.98, 0.96, 1], metallic: 1, roughness: 0.2 },
 };
 
 class FaceBounds {
@@ -195,10 +209,11 @@ class Block {
   private readonly root: Rubik;
   faces: Face[];
   position: vec3;
-  private readonly blockColor = [0.1, 0.1, 0.1];
   private _boundingBox: TriVec3[] = [];
 
   private readonly _geometry: Geometry;
+
+  private material = { baseColor: [1, 1, 1, 1], metallic: 0, roughness: 0 };
 
   get boundingBox(): TriVec3[] {
     return this._boundingBox.map((t) => utils.transformTriangle(t, this.root.transform));
@@ -217,13 +232,18 @@ class Block {
     const [v, i, c] = this.initGeo();
 
     this._geometry = new Geometry(gl, v, c, i);
-    this.faces = root.blockR < 1 ? this.createFaces() : [];
+    this.faces = this.createFaces();
     this.initPosition();
   }
 
   initGeo() {
     const [v, i] = roundedCubeData(1, this.root.blockR);
-    const colors: V3[] = Array(v.length).fill(this.blockColor);
+    const colors: V3[] = Array(v.length).fill([1, 1, 1]);
+    // const colors: V3[] = Array.from({ length: v.length / 3 }, () => {
+    //   const col: V3 = [Math.random(), Math.random(), Math.random()];
+    //   return [col, col, col];
+    // }).flat();
+    // const colors: V3[] = Array.from({ length: v.length }, () => [Math.random(), Math.random(), Math.random()]);
     return [v, i, colors];
   }
 
@@ -312,9 +332,32 @@ class Block {
     }
   }
 
+  getMaterialProps() {
+    const color = [
+      [0.79, 0.69, 0.13],
+      [0.74, 0.51, 0.44],
+      [0.7, 0.7, 0.7],
+    ][this.position[2] + 1];
+    const metallic = this.position[1] * 0.5 + 0.5;
+    const roughness = this.position[0] * 0.2 + 0.2;
+    this.material = { baseColor: [...color, 1], metallic, roughness };
+  }
+
   draw() {
     this.root.shader.setUniform("u_BlockPosition", this.position);
+    const { baseColor, metallic, roughness } = MATERIALS[this.root.material];
+
+    this.root.shader.setUniform("u_BaseColorFactor", baseColor);
+    this.root.shader.setUniform("u_MetallicFactor", metallic);
+    this.root.shader.setUniform("u_RoughnessFactor", roughness);
+
+    this.root.shader.setUniform("u_EnableBlockingAO", this.root.blockAO ? 1 : 0);
+
     this.geometry.draw(this.root.shader);
+
+    this.root.shader.setUniform("u_BaseColorFactor", [1, 1, 1, 1]);
+    this.root.shader.setUniform("u_EnableBlockingAO", 0);
+
     for (let face of this.faces) {
       face.draw();
     }
@@ -325,7 +368,6 @@ export class Rubik {
   private readonly gl: WebGL2RenderingContext;
   private readonly scene: Scene;
   private readonly camera: Camera;
-  readonly shader: SimpleShader;
 
   private readonly speed = 2; // turns/s
   private rotationQueue: RotQueueItem[] = [];
@@ -350,13 +392,20 @@ export class Rubik {
   private clickedBlockInfo: null | ClickedInfo = null;
 
   blockRays = true;
+  blockAO = true;
 
-  spread = 1.05;
+  _spread = 1.05;
   blockR = 0.15;
   faceCover = 0.75;
   faceR = 0.15;
   faceRingW = 1;
   faceExtrude = 0.005;
+
+  material = "matRadioP1";
+
+  get spread() {
+    return Math.max(this._spread, 1.001);
+  }
 
   get faceCoverAdj() {
     const blockSide = 1 - this.blockR;
@@ -379,12 +428,15 @@ export class Rubik {
     return this.rotationQueue.length > 0;
   }
 
+  get shader() {
+    return this.scene.activeShader;
+  }
+
   constructor(gl: WebGL2RenderingContext, scene: Scene) {
     this.gl = gl;
 
     this.scene = scene;
     this.camera = scene.camera;
-    this.shader = scene.cubeShader;
 
     this.updateBoundingBox();
 
@@ -401,6 +453,7 @@ export class Rubik {
     for (let x = -1; x < 2; x++) {
       for (let y = -1; y < 2; y++) {
         for (let z = -1; z < 2; z++) {
+          // if (x + y + z == 3) continue;
           blocks.push(new Block(this.gl, this, [x, y, z]));
         }
       }
@@ -430,60 +483,56 @@ export class Rubik {
   }
 
   private initDOMInputs() {
-    utils.handleInputById(
-      "blockRays",
-      this.blockRays,
-      "onclick",
-      utils.targetListener((t) => {
-        this.blockRays = t.checked;
+    const updateDOMVal = (id: string, val: number) => {
+      utils.getElementById(id).innerText = val.toString();
+    };
+
+    for (let id of ["blockRays", "blockAO", "showBounding"] as const) {
+      const handler = utils.targetListener((t) => {
+        this[id] = t.checked;
         this.triggerRedraw();
-      })
-    );
-    utils.handleInputById(
-      "boundsCheck",
-      this.showBounding,
-      "onclick",
-      utils.targetListener((t) => {
-        this.showBounding = t.checked;
-        this.triggerRedraw();
-      })
-    );
+      });
+      utils.handleInputById(id, this[id], "onclick", handler);
+    }
+
     utils.handleButtonById("scramble", "onclick", () => this.scramble());
     utils.handleButtonById("reset", "onclick", () => this.reset());
 
-    utils.handleButtonById("sideMenuButton", "onclick", () => {
-      const menu = document.getElementById("sideMenu")!;
-      menu.classList.toggle("hidden");
-    });
-
-    utils.handleInputById(
-      "spreadRange",
-      ((this.spread - 1) * 20).toString(),
-      "onchange",
-      utils.targetListener((t) => {
-        this.spread = mR(+t.value / 20 + 1, 6);
-        this.updateBoundingBox();
-        for (let block of this.blocks) block.updatePosition();
-        this.triggerRedraw();
-      })
+    utils.handleButtonById("sideMenuButton", "onclick", () =>
+      utils.getElementById("sideMenu").classList.toggle("hidden")
     );
+
+    const spreadHandler = utils.targetListener((t) => {
+      this._spread = mR(+t.value / 40 + 1, 6);
+      this.updateBoundingBox();
+      for (let block of this.blocks) block.updatePosition();
+      this.triggerRedraw();
+      updateDOMVal("spreadTxt", this._spread);
+    });
+    utils.handleInputById("spreadRange", ((this._spread - 1) * 40).toString(), "onchange", spreadHandler);
+    updateDOMVal("spreadTxt", this._spread);
 
     for (let id of ["blockR", "faceCover", "faceR", "faceRingW", "faceExtrude"] as const) {
       const s = id == "faceExtrude" ? 200 : 20;
       const adjust = (val: number, get = false) => mR(get ? val / s : val * s, 6);
 
-      utils.handleInputById(
-        `${id}Range`,
-        adjust(this[id]).toString(),
-        "onchange",
-        utils.targetListener((t) => {
-          const prevCover = this.faceCoverAdj;
-          this[id] = adjust(+t.value, true);
-          this.updateGeo(id == "blockR", id != "blockR" || this.faceCoverAdj != prevCover);
-          this.triggerRedraw();
-        })
-      );
+      const handler = utils.targetListener((t) => {
+        const prevCover = this.faceCoverAdj;
+        this[id] = adjust(+t.value, true);
+        this.updateGeo(id == "blockR", id != "blockR" || this.faceCoverAdj != prevCover);
+        this.triggerRedraw();
+        updateDOMVal(`${id}Txt`, this[id]);
+      });
+
+      utils.handleInputById(`${id}Range`, adjust(this[id]).toString(), "onchange", handler);
+      updateDOMVal(`${id}Txt`, this[id]);
     }
+
+    const materialHandler = utils.targetListener((t) => {
+      this.material = t.value;
+      this.triggerRedraw();
+    });
+    utils.handleRadioByName("matRadio", this.material, materialHandler);
   }
 
   updateGeo(updateBlocks: boolean, updateFaces: boolean) {
@@ -813,6 +862,7 @@ export class Rubik {
   }
 
   private getCurrentSliceMoveDetails() {
+    let currAngle = this.moveBlockInfo ? this.moveBlockInfo.currAngle : 0;
     let axis: Axis, level: Level, dir: Dir;
 
     if (this.movedBlockInfo) {
@@ -824,11 +874,25 @@ export class Rubik {
     }
 
     const block = this.blocks.find((block) => block.position[["x", "y", "z"].indexOf(axis)] == level);
-    let blockAngle = block
-      ? deg(Math.abs(quat.getAxisAngle(vec3.create(), mat4.getRotation(quat.create(), block.geometry.transform))))
-      : 0;
-    blockAngle = blockAngle > 180 ? 360 - blockAngle : blockAngle;
-    const currAngle = block ? blockAngle : this.moveBlockInfo ? this.moveBlockInfo.currAngle : 0;
+
+    if (block) {
+      const center = getAxisVector(axis, level * this.spread);
+      const transformedP = vec3.transformMat4(vec3.create(), [0, 0, 0], block.geometry.transform);
+
+      const blockDir = vec3.sub(vec3.create(), block.displayPosition, center);
+      const transformedDir = vec3.sub(vec3.create(), transformedP, center);
+
+      vec3.normalize(blockDir, blockDir);
+      vec3.normalize(transformedDir, transformedDir);
+
+      const dot = vec3.dot(blockDir, transformedDir);
+      const cross = vec3.cross(vec3.create(), blockDir, transformedDir);
+      vec3.normalize(cross, cross);
+
+      Math.abs(dot) < 0.99999 && ([axis, dir] = getAxisAndSide(cross));
+      currAngle = deg(acosC(dot));
+    }
+
     return { currAngle, axis, level, dir };
   }
 
@@ -854,14 +918,12 @@ export class Rubik {
   }
 
   private drawBlocks() {
-    this.shader.setUniform("u_Opacity", 1);
     for (let block of this.blocks) {
       block.draw();
     }
   }
 
   private drawBounds() {
-    this.shader.setUniform("u_Opacity", 0.25);
     for (let bound of this.bounds || []) {
       bound.draw();
     }
@@ -881,6 +943,7 @@ export class Rubik {
 
   draw() {
     this.shader.bind(this.camera);
+    this.scene.environment.applyEnvironmentMap(0);
     this.setUniforms();
     this.drawBlocks();
     if (this.showBounding) {

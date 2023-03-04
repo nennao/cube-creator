@@ -72,6 +72,12 @@ export function zip<T1, T2>(arr1: T1[], arr2: T2[]) {
   return arr1.map((a, i): [T1, T2] => [a, arr2[i]]);
 }
 
+export function getElementById(id: string) {
+  const el = document.getElementById(id);
+  if (!el) throw `element "${id}" not found`;
+  return el;
+}
+
 export function targetListener(listener: (t: HTMLInputElement) => void) {
   return (e: Event) => {
     listener(e.target as HTMLInputElement);
@@ -97,6 +103,17 @@ export function handleButtonById(id: string, type: InputEvents, listener: (e: Ev
   } else {
     console.warn(`cant find button with id ${id}`);
   }
+}
+
+export function handleRadioByName(name: string, val: string | boolean, listener: (e: Event) => void) {
+  document.querySelectorAll(`input[name=${name}]`).forEach((n) => {
+    if (n instanceof HTMLInputElement) {
+      if (n.value == val) {
+        n.checked = true;
+      }
+      n.onclick = listener;
+    }
+  });
 }
 
 export function handleFpsDisplay(dt: number, play: boolean) {

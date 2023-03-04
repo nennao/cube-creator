@@ -1,6 +1,8 @@
 precision highp float;
 
+#define PI 3.1415926535897932384626433832795
 
+#include <utils.glsl>
 #include <tonemapping.glsl>
 #include <textures.glsl>
 #include <functions.glsl>
@@ -23,10 +25,6 @@ void main()
     vec3 t = normalInfo.t;
     vec3 b = normalInfo.b;
 
-    float NdotV = clampedDot(n, v);
-    float TdotV = clampedDot(t, v);
-    float BdotV = clampedDot(b, v);
-
     MaterialInfo materialInfo;
     materialInfo.baseColor = baseColor.rgb;
 
@@ -39,7 +37,6 @@ void main()
     // MATERIAL_METALLICROUGHNESS
     materialInfo = getMetallicRoughnessInfo(materialInfo);
 
-
     materialInfo.perceptualRoughness = clamp(materialInfo.perceptualRoughness, 0.0, 1.0);
     materialInfo.metallic = clamp(materialInfo.metallic, 0.0, 1.0);
 
@@ -47,16 +44,13 @@ void main()
     // convert to material roughness by squaring the perceptual roughness.
     materialInfo.alphaRoughness = materialInfo.perceptualRoughness * materialInfo.perceptualRoughness;
 
-    // Compute reflectance.
-    float reflectance = max(max(materialInfo.f0.r, materialInfo.f0.g), materialInfo.f0.b);
-
     // Anything less than 2% is physically impossible and is instead considered to be shadowing. Compare to "Real-Time-Rendering" 4th editon on page 325.
     materialInfo.f90 = vec3(1.0);
 
     // LIGHTING
     vec3 f_specular = vec3(0.0);
     vec3 f_diffuse = vec3(0.0);
-    vec3 f_emissive = vec3(0.0);
+    //    vec3 f_emissive = vec3(0.0);
     //    vec3 f_clearcoat = vec3(0.0);
     //    vec3 f_sheen = vec3(0.0);
     //    vec3 f_transmission = vec3(0.0);
@@ -66,11 +60,11 @@ void main()
 
     // Calculate lighting contribution from image based lighting source (IBL)
     // USE_IBL
-    f_specular += getIBLRadianceGGX(n, v, materialInfo.perceptualRoughness, materialInfo.f0, materialInfo.specularWeight);
+    f_specular += getIBLRadianceGGX(n, v, materialInfo.perceptualRoughness, materialInfo.f0, materialInfo.specularWeight, materialInfo.metallic);
     f_diffuse += getIBLRadianceLambertian(n, v, materialInfo.perceptualRoughness, materialInfo.c_diff, materialInfo.f0, materialInfo.specularWeight);
 
 
-    float ao = 1.0;
+    float ao = u_EnableBlockingAO == 1 ? blockAO() : 1.0;
 
     //    // Apply optional PBR terms for additional (optional) shading
     //    // HAS_OCCLUSION_MAP
@@ -78,21 +72,19 @@ void main()
     //    // apply ambient occlusion to all lighting that is not punctual
     //    f_diffuse = mix(f_diffuse, f_diffuse * ao, u_OcclusionStrength);
     //    f_specular = mix(f_specular, f_specular * ao, u_OcclusionStrength);
+    f_specular *= ao;
+    f_diffuse *= ao;
 
 
-    vec3 color = f_emissive + f_diffuse + f_specular;
-
-    #if DEBUG == DEBUG_NONE
+    vec3 color = f_diffuse + f_specular;
 
 
+#if DEBUG == DEBUG_NONE
 
-    #ifdef LINEAR_OUTPUT
+#ifdef LINEAR_OUTPUT
     g_finalColor = vec4(color.rgb, baseColor.a);
 #else
-    // todo remove u_Col
-    g_finalColor = u_Col==1 || u_Col==4 ? vec4(linearTosRGB(materialInfo.baseColor), baseColor.a)
-                 : u_Col==0 || u_Col==5 ? vec4(materialInfo.baseColor, baseColor.a)
-                 :                        vec4(toneMap(color), baseColor.a);
+    g_finalColor = vec4(toneMap(color), baseColor.a);
 #endif
 
 #else

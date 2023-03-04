@@ -2,6 +2,7 @@ const float M_PI = 3.141592653589793;
 
 
 in vec3 v_Position;
+in vec3 v_PositionOrig;
 in vec3 v_Normal;
 in vec3 v_Color;
 
@@ -54,3 +55,9 @@ vec4 sq(vec4 t)
     return t * t;
 }
 
+vec3 sortV3(vec3 v) {
+    v = v.y > v.x && v.y > v.z ? v.yxz :
+        v.z > v.x && v.z > v.y ? v.zyx : v.xyz;
+    v = v.z > v.y ? v.xzy : v.xyz;
+    return v;
+}

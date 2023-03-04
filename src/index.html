@@ -17,10 +17,11 @@
       <div id="fps"><span id="fpsTxt"></span> fps</div>
 
       <div id="controlsCont">
-        <button id="mode">mode</button>
-        <input id="u_Col" type="number" value="0" min="0" max="5" />
-        <span class="hidden"><input id="boundsCheck" type="checkbox" /><label for="boundsCheck">bounding</label></span>
+        <span class="hidden"
+          ><input id="showBounding" type="checkbox" /><label for="showBounding">bounding</label></span
+        >
         <input id="blockRays" type="checkbox" />
+        <input id="blockAO" type="checkbox" />
         <input id="moveCamera" type="checkbox" />
         <button id="scramble">scramble</button>
         <button id="resetCam">reset cam</button>
@@ -29,28 +30,48 @@
 
       <div id="sideMenu" class="hidden">
         <div>
+          <input id="matRadioP1" value="matRadioP1" type="radio" name="matRadio" />
+          <label for="matRadioP1">plastic</label><br />
+          <input id="matRadioP2" value="matRadioP2" type="radio" name="matRadio" />
+          <label for="matRadioP2">shiny plastic</label><br />
+          <input id="matRadioSt" value="matRadioSt" type="radio" name="matRadio" />
+          <label for="matRadioSt">steel</label><br />
+          <input id="matRadioGo" value="matRadioGo" type="radio" name="matRadio" />
+          <label for="matRadioGo">gold</label><br />
+          <input id="matRadioRG" value="matRadioRG" type="radio" name="matRadio" />
+          <label for="matRadioRG">rose gold</label><br />
+          <input id="matRadioSi" value="matRadioSi" type="radio" name="matRadio" />
+          <label for="matRadioSi">silver</label><br />
+        </div>
+        <div>
           <label for="spreadRange">block spread</label>
-          <input id="spreadRange" type="range" min="0" max="10" />
+          <input id="spreadRange" type="range" min="0" max="20" />
+          <div id="spreadTxt"></div>
         </div>
         <div>
           <label for="blockRRange">block roundness</label>
           <input id="blockRRange" type="range" min="0" max="20" />
+          <div id="blockRTxt"></div>
         </div>
         <div>
           <label for="faceCoverRange">face coverage</label>
           <input id="faceCoverRange" type="range" min="0" max="20" />
+          <div id="faceCoverTxt"></div>
         </div>
         <div>
           <label for="faceRRange">face roundness</label>
           <input id="faceRRange" type="range" min="0" max="20" />
+          <div id="faceRTxt"></div>
         </div>
         <div>
           <label for="faceRingWRange">face ring thickness</label>
           <input id="faceRingWRange" type="range" min="0" max="20" />
+          <div id="faceRingWTxt"></div>
         </div>
         <div>
           <label for="faceExtrudeRange">face extrusion</label>
           <input id="faceExtrudeRange" type="range" min="0" max="50" />
+          <div id="faceExtrudeTxt"></div>
         </div>
       </div>
 

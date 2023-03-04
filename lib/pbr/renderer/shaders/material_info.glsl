@@ -10,9 +10,6 @@ uniform mat4 u_ViewMatrix;
 uniform mat4 u_ProjectionMatrix;
 
 
-uniform int u_Col;
-
-
 struct MaterialInfo
 {
     float ior;
@@ -113,7 +110,7 @@ vec4 getBaseColor()
     baseColor *= texture(u_BaseColorSampler, getBaseColorUV());
 #endif
 
-    return u_Col < 3 ? sRGBToLinear(baseColor * getVertexColor()) : baseColor * getVertexColor();
+    return sRGBToLinear(baseColor * getVertexColor());
 }
 
 
