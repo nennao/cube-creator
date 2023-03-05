@@ -14,6 +14,7 @@ import {
   subdivideIndexRows,
   V3,
   vec3ToV3,
+  zip,
 } from "./utils";
 
 // prettier-ignore
@@ -213,8 +214,6 @@ export const cubeData = (side=1): [V3[], V3[]] => {
   return [vertices, indices];
 };
 
-type PosAndEdge = { pos: vec3; edge: number[] };
-
 export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
   if (rPercent < 0.01) {
     rPercent = 0;
@@ -226,7 +225,7 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
   const rounded = rPercent > 0;
   const sphere = rPercent == 1;
 
-  const subdivisions = rPercent > 0.75 ? 4 : 3;
+  const subdivisions = Math.max(4, mR(rPercent * 20));
   const s = side / 2;
   const r = rPercent * s;
 
@@ -239,22 +238,27 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
     ];
   const [center, A0, B0, C0] = adjusted;
 
-  const positions: PosAndEdge[] = [
-    { pos: vec3.sub(vec3.create(), A0, center), edge: [0, 2] },
-    { pos: vec3.sub(vec3.create(), B0, center), edge: [1, 0] },
-    { pos: vec3.sub(vec3.create(), C0, center), edge: [2, 1] },
+  const positions: vec3[] = [
+    vec3.sub(vec3.create(), A0, center),
+    vec3.sub(vec3.create(), B0, center),
+    vec3.sub(vec3.create(), C0, center),
+  ];
+  const edges = [
+    [0, 2],
+    [1, 0],
+    [2, 1],
   ];
   const indices: V3[] = [];
 
   const edgeIndices: [[number, number][], [number, number][], [number, number][]] = [[], [], []];
 
-  const storeEdgeP = (p: PosAndEdge, i: number) => {
+  const storeEdgeP = (p: vec3, edge: number[], i: number) => {
     if (sphere) return;
-    for (let edgeI of p.edge) {
-      edgeIndices[edgeI].push([vec3.distance(p.pos, positions[edgeI].pos), i]);
+    for (let edgeI of edge) {
+      edgeIndices[edgeI].push([vec3.distance(p, positions[edgeI]), i]);
     }
   };
-  positions.forEach(storeEdgeP);
+  positions.forEach((p, i) => storeEdgeP(p, edges[i], i));
 
   const getTopPos = (p: vec3): V3 => [p[0] + center[0], p[1] + center[0], p[2] + center[0]];
   const getBottomPos = (p: vec3): V3 => [p[2], -p[1], p[0]];
@@ -265,9 +269,9 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
 
   const positionsTransformed: [V3[], V3[], V3[], V3[], V3[], V3[], V3[], V3[]] = [[], [], [], [], [], [], [], []];
 
-  const addTransformedPositions = (pos: PosAndEdge) => {
+  const addTransformedPositions = (p: vec3) => {
     if (sphere) return;
-    const top = getTopPos(pos.pos);
+    const top = getTopPos(p);
     const bot = getBottomPos(top);
     const [top1, top2, top3] = [rotate90Pos(top), rotate180Pos(top), rotate270Pos(top)];
     const [bot1, bot2, bot3] = [rotate90Pos(bot), rotate180Pos(bot), rotate270Pos(bot)];
@@ -275,66 +279,66 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
   };
   positions.forEach(addTransformedPositions);
 
-  const midpoints: { [key: string]: number } = {};
+  const midpoints: { [key: string]: number[] } = {};
 
-  const midpoint = (p1: PosAndEdge, p2: PosAndEdge): PosAndEdge => ({
-    pos: vec3.lerp(vec3.create(), p1.pos, p2.pos, 0.5),
-    edge: arrayIntersect(p1.edge, p2.edge),
-  });
-  const cachedMidpoint = (i1: number, i2: number) => {
-    const key = sortNum([i1, i2]).join("-");
-    if (!midpoints[key]) {
-      const midP = midpoint(positions[i1], positions[i2]);
-      const midI = positions.length;
-      storeEdgeP(midP, midI);
-      vec3.scale(midP.pos, midP.pos, r / vec3.length(midP.pos)); // normalize to rounded corner sphere radius
-      positions.push(midP);
-      addTransformedPositions(midP);
-      midpoints[key] = midI;
-    }
-    return midpoints[key];
+  const cachePoint = (p: vec3, edge: number[]) => {
+    const i = positions.length;
+    storeEdgeP(p, edge, i);
+    vec3.scale(p, p, r / vec3.length(p)); // normalize to rounded corner sphere radius
+    positions.push(p);
+    edges.push(edge);
+    addTransformedPositions(p);
+    return i;
   };
 
-  const subdivideTriangle = (iA: number, iB: number, iC: number, level: number) => {
-    const iD = cachedMidpoint(iA, iB);
-    const iE = cachedMidpoint(iB, iC);
-    const iF = cachedMidpoint(iC, iA);
+  const cacheMidpoints = (i1: number, i2: number, points: number, rev = false) => {
+    const key = sortNum([i1, i2]).join("-");
+    if (!midpoints[key]) {
+      const [p1, p2] = [positions[i1], positions[i2]];
+      const [e1, e2] = [edges[i1], edges[i2]];
+      const edge = arrayIntersect(e1, e2);
+      midpoints[key] = Array.from({ length: points }, (_, i) =>
+        cachePoint(vec3.lerp(vec3.create(), p1, p2, (i + 1) / (points + 1)), [...edge])
+      );
+    }
+    return rev ? [...midpoints[key]].reverse() : [...midpoints[key]];
+  };
 
-    const triangles = [
-      [iA, iD, iF],
-      [iD, iB, iE],
-      [iF, iE, iC],
-      [iD, iE, iF],
-    ];
-
-    for (let [i1, i2, i3] of triangles) {
-      if (level == subdivisions) {
-        indices.push([i1, i2, i3]);
-      } else {
-        subdivideTriangle(i1, i2, i3, level + 1);
-      }
+  const subdivideTriangle = (iA: number, iB: number, iC: number, subs: number, rev = false) => {
+    const edgeA = [...cacheMidpoints(iC, iA, subs - 1), iA];
+    const edgeB = [...cacheMidpoints(iC, iB, subs - 1), iB];
+    const rows = [[iC]];
+    zip(edgeA, edgeB).forEach(([a, b], i) => {
+      const midPs = cacheMidpoints(a, b, i, rev && i == edgeA.length - 1);
+      rows.push([a, ...midPs, b]);
+    });
+    for (let i = 1; i < rows.length; i++) {
+      const row1 = rows[i - 1];
+      const row2 = rows[i];
+      const j = row1.length - 1;
+      indices.push(...indexRowsToTriangles(row1, row2, false, () => true), [row1[j], row2[j], row2[j + 1]]);
     }
   };
 
   if (sphere) {
-    positions.push({ pos: [0, 0, -s], edge: [] }, { pos: [-s, 0, 0], edge: [] }, { pos: [0, -s, 0], edge: [] });
+    positions.push([0, 0, -s], [-s, 0, 0], [0, -s, 0]);
 
-    subdivideTriangle(0, 1, 2, 1);
-    subdivideTriangle(1, 3, 2, 1);
-    subdivideTriangle(3, 4, 2, 1);
-    subdivideTriangle(4, 0, 2, 1);
+    subdivideTriangle(0, 1, 2, subdivisions);
+    subdivideTriangle(1, 3, 2, subdivisions);
+    subdivideTriangle(3, 4, 2, subdivisions);
+    subdivideTriangle(4, 0, 2, subdivisions);
 
-    subdivideTriangle(1, 0, 5, 1);
-    subdivideTriangle(3, 1, 5, 1);
-    subdivideTriangle(4, 3, 5, 1);
-    subdivideTriangle(0, 4, 5, 1);
+    subdivideTriangle(1, 0, 5, subdivisions, true);
+    subdivideTriangle(3, 1, 5, subdivisions, true);
+    subdivideTriangle(4, 3, 5, subdivisions, true);
+    subdivideTriangle(0, 4, 5, subdivisions, true);
 
-    const [allPositions, allIndices] = [positions.map((p) => vec3ToV3(p.pos)), indices];
+    const [allPositions, allIndices] = [positions.map((p) => vec3ToV3(p)), indices];
     // return convertToFacePositions(allPositions, allIndices);
     return [allPositions, allIndices];
   }
 
-  rounded && subdivideTriangle(0, 1, 2, 1);
+  rounded && subdivideTriangle(0, 1, 2, subdivisions);
 
   // get positions and indices for all corner triangles
   const getIndex = (i: number, batch: number) => i + batch * positions.length;
@@ -355,7 +359,7 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
   const bots = [];
   const faces: [number[][], number[][], number[][], number[][], number[][], number[][]] = [[], [], [], [], [], []];
 
-  const subs = Math.max(0, mR((1 - rPercent) * 10) - 1);
+  const subs = rounded ? Math.floor(0.001 + ((1 - rPercent) * 10) / 2) * 2 + 1 : 1;
 
   for (let turn of [0, 1, 2, 3]) {
     const prevTurn = turn ? turn - 1 : 3;
