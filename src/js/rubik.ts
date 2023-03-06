@@ -2,7 +2,7 @@ import { mat3, mat4, vec2, vec3 } from "gl-matrix";
 
 import { Camera } from "./camera";
 import { Geometry } from "./geometry";
-import { cubeData, extrudedRingData, roundedCubeData, squareData } from "./shapes";
+import { cubeData, extrudedRingData, roundedCubeData, splitCubeFaceData, squareData } from "./shapes";
 import * as utils from "./utils";
 import { acosC, clamp, deg, max, min, mR, rad, randInt, vec3ToV3, ShallowNormalsInfo, TriVec3, V3 } from "./utils";
 import { Scene } from "./scene";
@@ -65,18 +65,26 @@ function orientFace(vertices: V3[], axis: Axis, side: Side): V3[] {
   return vertices.map((v) => vec3ToV3(rotateFn(vec3.create(), v, [0, 0, 0], rad(angle))));
 }
 
-function getFaceColors(faceId: FaceId, vertexCount: number): V3[] {
-  // prettier-ignore
-  // const colorMap = {
-  //   [FaceId.L]: [0, 1, 1], [FaceId.R]: [1, 0, 0],
-  //   [FaceId.D]: [1, 0, 1], [FaceId.U]: [0, 1, 0],
-  //   [FaceId.B]: [1, 1, 0], [FaceId.F]: [0, 0, 1],
-  // };
-  const colorMap = {
+// prettier-ignore
+const COLORS_CLASSIC = {
     [FaceId.L]: [0.70, 0.30, 0.00], [FaceId.R]: [0.60, 0.00, 0.10],
     [FaceId.D]: [0.90, 0.90, 0.15], [FaceId.U]: [0.85, 0.88, 0.90],
     [FaceId.B]: [0.00, 0.20, 0.55], [FaceId.F]: [0.00, 0.45, 0.22],
   };
+// prettier-ignore
+const COLORS_BRIGHT = {
+  [FaceId.L]: [0.90, 0.42, 0.10], [FaceId.R]: [0.81, 0.39, 0.58],
+  [FaceId.D]: [0.95, 0.90, 0.20], [FaceId.U]: [0.85, 0.85, 0.85],
+  [FaceId.B]: [0.24, 0.62, 0.81], [FaceId.F]: [0.45, 0.75, 0.15],
+  };
+
+const COLOR_SCHEMES = {
+  classic: COLORS_CLASSIC,
+  bright: COLORS_BRIGHT,
+};
+
+function getFaceColors(faceId: FaceId, vertexCount: number): V3[] {
+  const colorMap = COLOR_SCHEMES.classic;
   const color = colorMap[faceId];
   return Array(vertexCount).fill(color);
 }
@@ -209,11 +217,11 @@ class Block {
   private readonly root: Rubik;
   faces: Face[];
   position: vec3;
+  private readonly origPosition: vec3;
   private _boundingBox: TriVec3[] = [];
 
+  private readonly faceRotation = mat3.create();
   private readonly _geometry: Geometry;
-
-  private material = { baseColor: [1, 1, 1, 1], metallic: 0, roughness: 0 };
 
   get boundingBox(): TriVec3[] {
     return this._boundingBox.map((t) => utils.transformTriangle(t, this.root.transform));
@@ -228,6 +236,7 @@ class Block {
 
     this.root = root;
     this.position = position;
+    this.origPosition = [...position];
 
     const [v, i, c] = this.initGeo();
 
@@ -237,14 +246,32 @@ class Block {
   }
 
   initGeo() {
-    const [v, i] = roundedCubeData(1, this.root.blockR);
-    const colors: V3[] = Array(v.length).fill([1, 1, 1]);
-    // const colors: V3[] = Array.from({ length: v.length / 3 }, () => {
+    let faces = vec3ToV3(this.origPosition)
+      .map((p, i) => (p < 0 ? i + 3 : i))
+      .filter((_, i) => this.origPosition[i]);
+
+    if (!faces.length) {
+      faces = [0, 1, 2, 3, 4, 5];
+    }
+
+    const [v, i] = this.root.blockGeoData;
+    // const [v, i] = splitCubeFaceData(...this.root.blockGeoData, faces);
+
+    const vCount = v.length;
+    const triCount = vCount / 3;
+
+    const colors0: V3[] = Array(vCount).fill([1, 1, 1]);
+    // const colors2: V3[] = Array.from({ length: vCount }, () => [Math.random(), Math.random(), Math.random()]);
+    // const colors4: V3[] = Array.from({ length: triCount }, () => {
     //   const col: V3 = [Math.random(), Math.random(), Math.random()];
     //   return [col, col, col];
     // }).flat();
-    // const colors: V3[] = Array.from({ length: v.length }, () => [Math.random(), Math.random(), Math.random()]);
-    return [v, i, colors];
+    //
+    // const colors: V3[] = faces
+    //   .map((f) => getFaceColors(getFaceId([Axis.x, Axis.y, Axis.z][f % 3], f < 3 ? 1 : -1), mR(vCount / faces.length)))
+    //   .flat();
+
+    return [v, i, colors0];
   }
 
   updateGeo() {
@@ -285,29 +312,12 @@ class Block {
     this.initPosition();
   }
 
-  private rotateUpdatePosition(rotateFn: (pos: vec3) => vec3) {
+  private rotateUpdatePosition(rotateFn: (pos: vec3) => vec3, axis: Axis, dir: Dir, turns: number) {
     const rotatedPos = rotateFn(this.position);
     this.position = [mR(rotatedPos[0]), mR(rotatedPos[1]), mR(rotatedPos[2])];
 
-    this.geometry.transform = mat4.create();
-    this.updateFaces(rotateFn);
-
-    this.initPosition();
-  }
-
-  private updateFaces(rotateFn: (pos: vec3) => vec3) {
-    this.faces = this.faces.map((f) => {
-      const a = f.axis;
-      const s = f.side;
-      const facePos = Array.from(rotateFn(getAxisVector(a, s))).map((p, i) => [mR(p), i]);
-      for (let [p, i] of facePos) {
-        if (p) {
-          return new Face(this.gl, this, this.root, [Axis.x, Axis.y, Axis.z][i], p > 0 ? 1 : -1, f.faceId);
-        }
-      }
-      console.error("error rotating face:", a, s, facePos);
-      throw "error rotating face";
-    });
+    mat3.multiply(this.faceRotation, utils.mat3Rotation90(axis, dir * turns), this.faceRotation);
+    this.updatePosition();
   }
 
   rotate(axis: Axis, dir: Dir, amt: number, isFinal: boolean, turns: number) {
@@ -320,7 +330,7 @@ class Block {
           y: vec3.rotateY,
           z: vec3.rotateZ,
         }[axis](vec3.create(), pos, [0, 0, 0], rad(90 * dir * turns)));
-      this.rotateUpdatePosition(rotateFn);
+      this.rotateUpdatePosition(rotateFn, axis, dir, turns);
     } else {
       const angle = rad(amt * dir);
       const rotation = mat4.fromRotation(mat4.create(), angle, axisV);
@@ -332,19 +342,10 @@ class Block {
     }
   }
 
-  getMaterialProps() {
-    const color = [
-      [0.79, 0.69, 0.13],
-      [0.74, 0.51, 0.44],
-      [0.7, 0.7, 0.7],
-    ][this.position[2] + 1];
-    const metallic = this.position[1] * 0.5 + 0.5;
-    const roughness = this.position[0] * 0.2 + 0.2;
-    this.material = { baseColor: [...color, 1], metallic, roughness };
-  }
-
   draw() {
     this.root.shader.setUniform("u_BlockPosition", this.position);
+    this.root.shader.setUniform("u_FaceRotation", this.faceRotation);
+
     const { baseColor, metallic, roughness } = MATERIALS[this.root.material];
 
     this.root.shader.setUniform("u_BaseColorFactor", baseColor);
@@ -354,7 +355,10 @@ class Block {
     this.root.shader.setUniform("u_EnableBlockingAO", this.root.blockAO ? 1 : 0);
 
     this.geometry.draw(this.root.shader);
+    this.drawFaces();
+  }
 
+  drawFaces() {
     this.root.shader.setUniform("u_BaseColorFactor", [1, 1, 1, 1]);
     this.root.shader.setUniform("u_EnableBlockingAO", 0);
 
@@ -381,6 +385,8 @@ export class Rubik {
 
   private scrambling = false;
   private showBounding = false;
+
+  _blockGeoData: [V3[], V3[], number[][]] = [[], [], []];
 
   private boundingBox: [Axis, Side, TriVec3[]][] | undefined;
   private bounds: FaceBounds[] | undefined;
@@ -440,11 +446,21 @@ export class Rubik {
 
     this.updateBoundingBox();
 
+    this.updateBlockGeo();
     this.blocks = this.createBlocks();
 
     this.initDOMInputs();
 
     this.initialPosition();
+  }
+
+  private updateBlockGeo() {
+    this._blockGeoData = roundedCubeData(1, this.blockR);
+  }
+
+  get blockGeoData(): [V3[], V3[], number[][]] {
+    const [v, i, s] = this._blockGeoData;
+    return [[...v], [...i], [...s]];
   }
 
   private createBlocks() {
@@ -533,9 +549,14 @@ export class Rubik {
       this.triggerRedraw();
     });
     utils.handleRadioByName("matRadio", this.material, materialHandler);
+
+    utils.handleInputById("u_Debug", "0", "onchange", () => this.triggerRedraw());
   }
 
   updateGeo(updateBlocks: boolean, updateFaces: boolean) {
+    if (updateBlocks) {
+      this.updateBlockGeo();
+    }
     for (let block of this.blocks) {
       if (updateBlocks) {
         block.updateGeo();
@@ -939,6 +960,7 @@ export class Rubik {
     this.shader.setUniform("u_RubikMatrix", this.transform);
     this.shader.setUniform("u_RubikMatrixInv", mat3.fromMat4(this.invTransform3, this.invTransform));
     this.shader.setUniform("u_EnableBlocking", this.blockRays ? 1 : 0);
+    this.shader.setUniform("u_Debug", +(utils.getElementById("u_Debug") as HTMLInputElement).value);
   }
 
   draw() {

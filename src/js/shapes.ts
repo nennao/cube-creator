@@ -2,8 +2,10 @@ import { vec3 } from "gl-matrix";
 import {
   arrayIntersect,
   arrayRange,
+  arrayUniqueVals,
   clamp,
   convertToFacePositions,
+  divmod,
   indexCircleToTriangles,
   indexRingToTriangles,
   indexRowsToTriangles,
@@ -12,6 +14,7 @@ import {
   rad,
   sortNum,
   subdivideIndexRows,
+  V2,
   V3,
   vec3ToV3,
   zip,
@@ -214,7 +217,35 @@ export const cubeData = (side=1): [V3[], V3[]] => {
   return [vertices, indices];
 };
 
-export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
+const edgeSplitComponentsToId = (c: V2) => {
+  return c[0] * 6 + c[1];
+};
+const edgeSplitIdToComponents = (id: number): V2 => {
+  return divmod(id, 6);
+};
+
+const _addTransformedSplitEdges = (edges: number[]) => {
+  const _edgeSplitIdToComponents = (id: number): V2 => {
+    if (![1, 2, 6, 8, 12, 13].includes(id)) console.error("invalid id: " + id);
+    return edgeSplitIdToComponents(id);
+  };
+  const components = edges.map(_edgeSplitIdToComponents);
+
+  const getBottom = (n: number) => (n == 0 ? 2 : n == 2 ? 0 : 4);
+  const rotate90 = (n: number) => (n == 2 ? 0 : n == 0 ? 5 : n);
+  const rotate180 = (n: number) => (n == 2 ? 5 : n == 0 ? 3 : n);
+  const rotate270 = (n: number) => (n == 2 ? 3 : n == 0 ? 2 : n);
+
+  const a = (f: (n: number) => number, comps: V2[]): V2[] => comps.map((c) => [f(c[0]), f(c[1])]);
+
+  const top = [...components];
+  const bot = a(getBottom, top);
+  const [top1, top2, top3] = [a(rotate90, top), a(rotate180, top), a(rotate270, top)];
+  const [bot1, bot2, bot3] = [a(rotate90, bot), a(rotate180, bot), a(rotate270, bot)];
+  return [top, bot, top1, bot1, top2, bot2, top3, bot3].map((comps) => comps.map(edgeSplitComponentsToId));
+};
+
+export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[], number[][]] {
   if (rPercent < 0.01) {
     rPercent = 0;
   }
@@ -225,7 +256,9 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
   const rounded = rPercent > 0;
   const sphere = rPercent == 1;
 
-  const subdivisions = Math.max(4, mR(rPercent * 20));
+  const faceEdgeSplit = true;
+  const subdivisions = faceEdgeSplit ? Math.ceil(((rPercent * 480) / 6) ** 0.5) + 1 : Math.max(4, mR(rPercent * 20));
+
   const s = side / 2;
   const r = rPercent * s;
 
@@ -248,6 +281,16 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
     [1, 0],
     [2, 1],
   ];
+
+  const esi = (id: number) => edgeSplitIdToComponents(id);
+  const esc = (component1: number, component2: number) => edgeSplitComponentsToId([component1, component2]);
+  // prettier-ignore
+  const splitEdges = [
+    [ [2, 0], [2, 1] ].map(([c0, c1]) => esc(c0, c1)),
+    [ [0, 1], [0, 2] ].map(([c0, c1]) => esc(c0, c1)),
+    [ [1, 0], [1, 2] ].map(([c0, c1]) => esc(c0, c1)),
+  ];
+
   const indices: V3[] = [];
 
   const edgeIndices: [[number, number][], [number, number][], [number, number][]] = [[], [], []];
@@ -268,6 +311,7 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
   const rotate270Pos = (p: vec3): V3 => [-p[2], p[1], p[0]];
 
   const positionsTransformed: [V3[], V3[], V3[], V3[], V3[], V3[], V3[], V3[]] = [[], [], [], [], [], [], [], []];
+  const splitEdgesTransformed: number[][][] = [[], [], [], [], [], [], [], []];
 
   const addTransformedPositions = (p: vec3) => {
     if (sphere) return;
@@ -279,37 +323,50 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
   };
   positions.forEach(addTransformedPositions);
 
-  const midpoints: { [key: string]: number[] } = {};
+  const addTransformedSplitEdges = (edges: number[]) => {
+    if (sphere) return;
+    const transformed = _addTransformedSplitEdges(edges);
+    transformed.forEach((edges, i) => splitEdgesTransformed[i].push(edges));
+  };
+  splitEdges.forEach(addTransformedSplitEdges);
 
-  const cachePoint = (p: vec3, edge: number[]) => {
+  const midpoints: { [key: string]: { p: number[]; orig: string } } = {};
+
+  const cachePoint = (p: vec3, edge: number[], splitEdge: number[]) => {
     const i = positions.length;
     storeEdgeP(p, edge, i);
     vec3.scale(p, p, r / vec3.length(p)); // normalize to rounded corner sphere radius
     positions.push(p);
     edges.push(edge);
+    splitEdges.push(splitEdge);
     addTransformedPositions(p);
+    addTransformedSplitEdges(splitEdge);
+
     return i;
   };
 
-  const cacheMidpoints = (i1: number, i2: number, points: number, rev = false) => {
+  const cacheMidpoints = (i1: number, i2: number, points: number, _splitEdge?: number[]) => {
     const key = sortNum([i1, i2]).join("-");
+    const keyOrig = [i1, i2].join("-");
     if (!midpoints[key]) {
       const [p1, p2] = [positions[i1], positions[i2]];
       const [e1, e2] = [edges[i1], edges[i2]];
       const edge = arrayIntersect(e1, e2);
-      midpoints[key] = Array.from({ length: points }, (_, i) =>
-        cachePoint(vec3.lerp(vec3.create(), p1, p2, (i + 1) / (points + 1)), [...edge])
+      const splitEdge = _splitEdge || arrayIntersect(splitEdges[i1], splitEdges[i2]);
+      const cacheVal = Array.from({ length: points }, (_, i) =>
+        cachePoint(vec3.lerp(vec3.create(), p1, p2, (i + 1) / (points + 1)), [...edge], [...splitEdge])
       );
+      midpoints[key] = { p: cacheVal, orig: keyOrig };
     }
-    return rev ? [...midpoints[key]].reverse() : [...midpoints[key]];
+    return keyOrig != midpoints[key].orig ? [...midpoints[key].p].reverse() : [...midpoints[key].p];
   };
 
-  const subdivideTriangle = (iA: number, iB: number, iC: number, subs: number, rev = false) => {
+  const subdivideTriangle = (iA: number, iB: number, iC: number, subs: number) => {
     const edgeA = [...cacheMidpoints(iC, iA, subs - 1), iA];
     const edgeB = [...cacheMidpoints(iC, iB, subs - 1), iB];
     const rows = [[iC]];
     zip(edgeA, edgeB).forEach(([a, b], i) => {
-      const midPs = cacheMidpoints(a, b, i, rev && i == edgeA.length - 1);
+      const midPs = cacheMidpoints(a, b, i);
       rows.push([a, ...midPs, b]);
     });
     for (let i = 1; i < rows.length; i++) {
@@ -320,25 +377,79 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
     }
   };
 
+  const subdivideCentroidTriangle = (iA: number, iB: number, iC: number, subs: number) => {
+    const [p0, p1, p2] = [positions[iA], positions[iB], positions[iC]];
+
+    const centroid = vec3.create();
+    vec3.add(centroid, p0, vec3.add(centroid, p1, p2));
+    vec3.normalize(centroid, centroid);
+    vec3.scale(centroid, centroid, r);
+
+    const iM = positions.length;
+
+    const getMidSplitEdges = (orig: number[]) => {
+      const allowed = orig.map((i) => esi(i)[0]);
+      return orig.filter((id) => {
+        const [c0, c1] = esi(id);
+        return allowed.includes(c0) && allowed.includes(c1);
+      });
+    };
+
+    const centroidSplitEdges = getMidSplitEdges([...splitEdges[iA], ...splitEdges[iB], ...splitEdges[iC]]);
+
+    positions.push(centroid);
+    edges.push([]);
+    splitEdges.push(centroidSplitEdges);
+    addTransformedPositions(centroid);
+    addTransformedSplitEdges(centroidSplitEdges);
+
+    const [iD] = cacheMidpoints(iA, iB, 1, getMidSplitEdges([...splitEdges[iA], ...splitEdges[iB]]));
+    const [iE] = cacheMidpoints(iB, iC, 1, getMidSplitEdges([...splitEdges[iB], ...splitEdges[iC]]));
+    const [iF] = cacheMidpoints(iC, iA, 1, getMidSplitEdges([...splitEdges[iC], ...splitEdges[iA]]));
+
+    subdivideTriangle(iA, iD, iM, subs - 1);
+    subdivideTriangle(iD, iB, iM, subs - 1);
+
+    subdivideTriangle(iB, iE, iM, subs - 1);
+    subdivideTriangle(iE, iC, iM, subs - 1);
+
+    subdivideTriangle(iC, iF, iM, subs - 1);
+    subdivideTriangle(iF, iA, iM, subs - 1);
+  };
+
+  const doSubdivide = faceEdgeSplit ? subdivideCentroidTriangle : subdivideTriangle;
+
   if (sphere) {
+    splitEdges[0].push(esc(2, 3), esc(2, 4));
+    splitEdges[1].push(esc(0, 4), esc(0, 5));
+    splitEdges[2].push(esc(1, 3), esc(1, 5));
+
     positions.push([0, 0, -s], [-s, 0, 0], [0, -s, 0]);
+    edges.push([], [], []);
+    // prettier-ignore
+    splitEdges.push(
+      [ [5, 0], [5, 1], [5, 3], [5, 4] ].map(([c0, c1]) => esc(c0, c1)),
+      [ [3, 1], [3, 2], [3, 4], [3, 5] ].map(([c0, c1]) => esc(c0, c1)),
+      [ [4, 0], [4, 2], [4, 3], [4, 5] ].map(([c0, c1]) => esc(c0, c1)),
+    );
 
-    subdivideTriangle(0, 1, 2, subdivisions);
-    subdivideTriangle(1, 3, 2, subdivisions);
-    subdivideTriangle(3, 4, 2, subdivisions);
-    subdivideTriangle(4, 0, 2, subdivisions);
+    doSubdivide(0, 1, 2, subdivisions);
+    doSubdivide(1, 3, 2, subdivisions);
+    doSubdivide(3, 4, 2, subdivisions);
+    doSubdivide(4, 0, 2, subdivisions);
 
-    subdivideTriangle(1, 0, 5, subdivisions, true);
-    subdivideTriangle(3, 1, 5, subdivisions, true);
-    subdivideTriangle(4, 3, 5, subdivisions, true);
-    subdivideTriangle(0, 4, 5, subdivisions, true);
+    doSubdivide(1, 0, 5, subdivisions);
+    doSubdivide(3, 1, 5, subdivisions);
+    doSubdivide(4, 3, 5, subdivisions);
+    doSubdivide(0, 4, 5, subdivisions);
 
     const [allPositions, allIndices] = [positions.map((p) => vec3ToV3(p)), indices];
+
     // return convertToFacePositions(allPositions, allIndices);
-    return [allPositions, allIndices];
+    return [allPositions, allIndices, splitEdges];
   }
 
-  rounded && subdivideTriangle(0, 1, 2, subdivisions);
+  rounded && doSubdivide(0, 1, 2, subdivisions);
 
   // get positions and indices for all corner triangles
   const getIndex = (i: number, batch: number) => i + batch * positions.length;
@@ -346,6 +457,7 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
   const allIndices: V3[] = Array.from(Array(8))
     .map((_, batch): V3[] => indices.map((t) => [getIndex(t[0], batch), getIndex(t[1], batch), getIndex(t[2], batch)]))
     .flat();
+  const allSplitEdges = [...splitEdgesTransformed].flat();
 
   const flat: V3[] = [];
 
@@ -357,6 +469,7 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
 
   const tops = [];
   const bots = [];
+  const sides: number[][] = [];
   const faces: [number[][], number[][], number[][], number[][], number[][], number[][]] = [[], [], [], [], [], []];
 
   const subs = rounded ? Math.floor(0.001 + ((1 - rPercent) * 10) / 2) * 2 + 1 : 1;
@@ -383,8 +496,11 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
         [horizEdgeTopPoints1, horizEdgeTopPoints2, [0]],
         [horizEdgeBotPoints1, horizEdgeBotPoints2, [2]],
       ]) {
-        const [extraPositions, midEdgePoints] = subdivideIndexRows(row1, row2, subs, allPositions);
+        const subdivides = subdivideIndexRows(row1, row2, subs, allPositions, allSplitEdges);
+        const [extraPositions, midEdgePoints, extraSplitEdges] = subdivides;
+
         allPositions.push(...extraPositions.flat());
+        allSplitEdges.push(...extraSplitEdges.flat());
 
         const pointsList = [row1, ...midEdgePoints, row2];
         pointsList.forEach((_, i) => {
@@ -407,33 +523,198 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[]] {
     }
 
     if (!rounded) {
-      flat.push(
-        ...indexRowsToTriangles([getIndex(1, top0), getIndex(0, top1)], [getIndex(0, bot0), getIndex(1, bot1)])
-      );
+      sides.push([getIndex(1, top0), getIndex(0, top1), getIndex(0, bot0), getIndex(1, bot1)]);
     }
   }
+
+  let edgeFaces: number[][][];
 
   if (rounded) {
-    for (let face of faces) {
-      const face0b = face[0].slice(1, face[0].length - 1);
-      const face2b = face[2].slice(1, face[2].length - 1);
-      const [extraPositions, midEdgePoints] = subdivideIndexRows(face0b, face2b, subs, allPositions);
-      allPositions.push(...extraPositions.flat());
-      const midRows = midEdgePoints.map((points, i) => [face[1][i + 1], ...points, face[3][i + 1]]);
-
-      const pointsList = [face[0], ...midRows, face[2]];
-      pointsList.forEach((_, i) => {
-        if (i) {
-          flat.push(...indexRowsToTriangles(pointsList[i - 1], pointsList[i]));
-        }
-      });
-    }
+    edgeFaces = faces;
   } else {
-    flat.push(...indexRowsToTriangles([tops[3], tops[2]], [tops[0], tops[1]]));
-    flat.push(...indexRowsToTriangles([bots[0], bots[1]], [bots[3], bots[2]]));
+    const faces2: number[][][] = [];
+    sides.push([tops[3], tops[2], tops[0], tops[1]]);
+    sides.push([bots[0], bots[1], bots[3], bots[2]]);
+
+    for (let [t0, t1, b0, b1] of sides) {
+      const face: number[][] = [];
+      // prettier-ignore
+      ([[t0, t1], [t0, b0], [b0, b1], [t1, b1]]).forEach(([i0, i1]) => {
+        const subdivides = subdivideIndexRows([i0], [i1], subs, allPositions, allSplitEdges);
+        const [extraPositions, midEdgePoints, extraSplitEdges] = subdivides;
+
+        allPositions.push(...extraPositions.flat());
+        allSplitEdges.push(...extraSplitEdges.flat());
+
+        face.push([i0, midEdgePoints[0][0], i1]);
+      });
+      faces2.push(face);
+    }
+    edgeFaces = faces2;
   }
+
+  for (let face of edgeFaces) {
+    const face0b = face[0].slice(1, face[0].length - 1);
+    const face2b = face[2].slice(1, face[2].length - 1);
+    const [extraPositions, midEdgePoints] = subdivideIndexRows(face0b, face2b, subs, allPositions);
+    const newSplitEdges = getFlatFaceSplitEdges(face[0], face[1], face[2], face[3], midEdgePoints, allSplitEdges, subs);
+
+    allPositions.push(...extraPositions.flat());
+    allSplitEdges.push(...newSplitEdges.flat());
+
+    const midRows = midEdgePoints.map((points, i) => [face[1][i + 1], ...points, face[3][i + 1]]);
+
+    const pointsList = [face[0], ...midRows, face[2]];
+    pointsList.forEach((_, i) => {
+      if (i) {
+        flat.push(...indexRowsToTriangles(pointsList[i - 1], pointsList[i], false, (j) => j == i - 1));
+      }
+    });
+  }
+
   allIndices.push(...flat);
 
   // return convertToFacePositions(allPositions, allIndices);
-  return [allPositions, allIndices];
+  return [allPositions, allIndices, allSplitEdges];
+}
+
+function getFlatFaceSplitEdges(
+  edge_ny: number[],
+  edge_nx: number[],
+  edge_py: number[],
+  edge_px: number[],
+  midEdgePoints: number[][],
+  splitEdges: number[][],
+  subdivisions: number
+) {
+  const [ny, nx, py, px] = [edge_ny[1], edge_nx[1], edge_py[1], edge_px[1]].map((i) => splitEdges[i][0]);
+
+  const cmp = (a: number, b: number) => a >= Math.abs(b);
+  return midEdgePoints.map((row, j) =>
+    row.map((col, i) => {
+      const x = i - Math.floor(subdivisions / 2);
+      const y = j - Math.floor(subdivisions / 2);
+      const checks = [cmp(-y, x), cmp(-x, y), cmp(y, x), cmp(x, y)];
+      return [ny, nx, py, px].filter((_, k) => checks[k]);
+    })
+  );
+}
+
+function assertAdjacentOnly(arr: number[]) {
+  arr.forEach((n) => {
+    if (arr.includes(n < 3 ? n + 3 : n - 3)) throw "invalid choice (non adjacent) faces.";
+  });
+}
+
+function getSplitCube2(x: number, y: number) {
+  const ws = [x, y];
+  assertAdjacentOnly(ws);
+
+  const all = [0, 1, 2, 3, 4, 5];
+  const other = all.filter((a) => !ws.includes(a));
+
+  const esc = (component1: number, component2: number) => edgeSplitComponentsToId([component1, component2]);
+
+  const buckets: number[][] = Array.from({ length: 6 }, () => []);
+  for (let [w, w2] of [
+    [x, y],
+    [y, x],
+  ]) {
+    const opp = w < 3 ? w + 3 : w - 3;
+    const opp2 = w2 < 3 ? w2 + 3 : w2 - 3;
+    // full faces
+    buckets[w].push(...all.filter((a) => a != w && a != opp).map((a) => esc(w, a)));
+    buckets[w].push(...all.filter((a) => a != w2 && a != opp2).map((a) => esc(opp2, a)));
+    // adjacent faces
+    const [a1, a2] = other.filter((a) => a != opp && a != opp2);
+    buckets[w].push(esc(a1, w), esc(a2, w), esc(a1, opp2), esc(a2, opp2));
+  }
+
+  return [buckets[x], buckets[y]];
+}
+
+function getSplitCube3(x: number, y: number, z: number) {
+  const ws = [x, y, z];
+  assertAdjacentOnly(ws);
+
+  const all = [0, 1, 2, 3, 4, 5];
+  const other = all.filter((a) => !ws.includes(a));
+
+  const esc = (component1: number, component2: number) => edgeSplitComponentsToId([component1, component2]);
+
+  const buckets: number[][] = Array.from({ length: 6 }, () => []);
+  for (let w of ws) {
+    const opp = w < 3 ? w + 3 : w - 3;
+    // full face
+    buckets[w].push(...all.filter((a) => a != w && a != opp).map((a) => esc(w, a)));
+    // adjacent faces
+    const [a1, a2] = other.filter((a) => a != opp);
+    buckets[w].push(esc(a1, w), esc(a2, w), esc(a1, a2), esc(a2, a1));
+  }
+
+  return [buckets[x], buckets[y], buckets[z]];
+}
+
+function getSplitCube6(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) {
+  const ws = [x0, y0, z0, x1, y1, z1];
+  const all = [0, 1, 2, 3, 4, 5];
+
+  const esc = (component1: number, component2: number) => edgeSplitComponentsToId([component1, component2]);
+
+  const buckets: number[][] = Array.from({ length: 6 }, () => []);
+  for (let w of ws) {
+    const opp = w < 3 ? w + 3 : w - 3;
+    // full face
+    buckets[w].push(...all.filter((a) => a != w && a != opp).map((a) => esc(w, a)));
+  }
+
+  return [buckets[x0], buckets[y0], buckets[z0], buckets[x1], buckets[y1], buckets[z1]];
+}
+
+export function splitCubeFaceData(positions: V3[], indices: V3[], splitEdges: number[][], colors: number[]) {
+  let bucketsInfo: number[][];
+
+  if (colors.length == 2) {
+    bucketsInfo = getSplitCube2(colors[0], colors[1]);
+  } else if (colors.length == 3) {
+    bucketsInfo = getSplitCube3(colors[0], colors[1], colors[2]);
+  } else if (colors.length == 6) {
+    bucketsInfo = getSplitCube6(colors[0], colors[1], colors[2], colors[3], colors[4], colors[5]);
+  } else {
+    return [positions, indices];
+  }
+
+  const bucketsMap: { [key: number]: number } = {};
+  bucketsInfo.forEach((bucketInfo, n) => bucketInfo.forEach((i) => (bucketsMap[i] = n)));
+
+  const positionsCopy = [...positions];
+  const buckets: number[][] = Array.from(bucketsInfo, () => []);
+  const bucketedNewIndices: { [key: number]: number }[] = Array.from(bucketsInfo, () => ({}));
+
+  positions.forEach((p, i) => {
+    const edgeBuckets = sortNum(arrayUniqueVals(splitEdges[i].map((j) => bucketsMap[j])));
+
+    edgeBuckets.forEach((edgeBucket, bI) => {
+      let index = i;
+      if (bI) {
+        index = positionsCopy.length;
+        positionsCopy.push([...p]);
+        bucketedNewIndices[edgeBucket][i] = index;
+      }
+      buckets[edgeBucket].push(index);
+    });
+  });
+
+  const ordering = buckets.flat();
+  const indexMap = Object.fromEntries(ordering.map((oldI, newI) => [oldI, newI]));
+  const newPositions = ordering.map((oldI) => positionsCopy[oldI]);
+
+  const newIndices: V3[] = indices.map(([i0, i1, i2]) => {
+    const commonEdges = arrayIntersect(splitEdges[i0], arrayIntersect(splitEdges[i1], splitEdges[i2]));
+    const edgeBucket = arrayUniqueVals(commonEdges.map((j) => bucketsMap[j]))[0];
+    const findNewIndex = (i: number) => indexMap[bucketedNewIndices[edgeBucket][i] ?? i];
+    return [findNewIndex(i0), findNewIndex(i1), findNewIndex(i2)];
+  });
+
+  return [newPositions, newIndices];
 }

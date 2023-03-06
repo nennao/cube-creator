@@ -1,4 +1,4 @@
-import { mat4, vec3 } from "gl-matrix";
+import { mat3, mat4, vec3 } from "gl-matrix";
 
 export function mR(x: number, dp: number = 0) {
   return Math.round((x + Number.EPSILON) * Math.pow(10, dp)) / Math.pow(10, dp);
@@ -32,6 +32,10 @@ export function max<T>(a: T[], key: (k: T) => number) {
   return a.reduce((x, y) => (key(x) > key(y) ? x : y));
 }
 
+export function divmod(a: number, b: number): [number, number] {
+  return [Math.floor(a / b), a % b];
+}
+
 export function shuffle<T>(array: T[], inPlace = false): T[] {
   if (!inPlace) {
     array = [...array];
@@ -60,8 +64,12 @@ export function sortNum(array: number[], key = (a: number, b: number) => a - b, 
   return sort(array, key, inPlace);
 }
 
+export function arrayUniqueVals<T>(arr: T[]) {
+  return arr.filter((val, i, arr) => arr.indexOf(val) == i);
+}
+
 export function arrayIntersect<T>(arr1: T[], arr2: T[]) {
-  return arr1.filter((val) => arr2.includes(val)).filter((val, i, arr) => arr.indexOf(val) == i);
+  return arrayUniqueVals(arr1.filter((val) => arr2.includes(val)));
 }
 
 export function arrayRange(len: number, start = 0) {
@@ -130,6 +138,7 @@ export function handleFpsDisplay(dt: number, play: boolean) {
   }
 }
 
+export type V2 = [number, number];
 export type V3 = [number, number, number];
 
 export function vec3ToV3(v: vec3): V3 {
@@ -151,27 +160,43 @@ export function subdivideIndexRows(
   row1: number[],
   row2: number[],
   subdivisions: number,
-  positions: V3[]
-): [V3[][], number[][]] {
+  positions: V3[],
+  splitEdges?: number[][]
+): [V3[][], number[][], number[][][]] {
   const zipped = zip(row1, row2);
-  const newPositions = Array.from({ length: subdivisions }, (_, i) =>
-    zipped.map(([i1, i2]) =>
-      vec3ToV3(vec3.lerp(vec3.create(), positions[i1], positions[i2], (i + 1) / (subdivisions + 1)))
-    )
-  );
+
+  const newPositions = [];
+  const newSplitEdges: number[][][] = [];
+
+  for (let i = 0; i < subdivisions; i++) {
+    newPositions.push(
+      zipped.map(([i1, i2]) =>
+        vec3ToV3(vec3.lerp(vec3.create(), positions[i1], positions[i2], (i + 1) / (subdivisions + 1)))
+      )
+    );
+    splitEdges && newSplitEdges.push(zipped.map(([i1, i2]) => arrayIntersect(splitEdges[i1], splitEdges[i2])));
+  }
+
   const newIndices = Array.from(newPositions, (p, i) => arrayRange(p.length, positions.length + i * p.length));
-  return [newPositions, newIndices];
+  return [newPositions, newIndices, newSplitEdges];
 }
 
-export function indexRowsToTriangles(row1: number[], row2: number[], ring = false): V3[] {
+export function indexRowsToTriangles(row1: number[], row2: number[], ring = false, rev = (_: number) => false): V3[] {
   if (ring) {
     row1 = [...row1, row1[0]];
     row2 = [...row2, row2[0]];
   }
-  return Array.from({ length: row1.length - 1 }, (_, i): [V3, V3] => [
-    [row1[i], row2[i], row1[i + 1]],
-    [row1[i + 1], row2[i], row2[i + 1]],
-  ]).flat();
+  return Array.from({ length: row1.length - 1 }, (_, i): [V3, V3] =>
+    rev(i)
+      ? [
+          [row1[i], row2[i], row2[i + 1]],
+          [row1[i], row2[i + 1], row1[i + 1]],
+        ]
+      : [
+          [row1[i], row2[i], row1[i + 1]],
+          [row1[i + 1], row2[i], row2[i + 1]],
+        ]
+  ).flat();
 }
 
 export function indexRingToTriangles(row1: number[], row2: number[]): V3[] {
@@ -380,4 +405,26 @@ export function convertToFacePositions(positions: V3[], indices: V3[]): [V3[], V
     faceIndices.push(newIndices);
   }
   return [facePositions, faceIndices];
+}
+
+export function mat3Rotation90(axis: "x" | "y" | "z", turns: number) {
+  turns %= 4;
+  let s = Math.round(Math.sin(rad(90 * turns)));
+  let c = Math.round(Math.cos(rad(90 * turns)));
+
+  // prettier-ignore
+  const mat:mat3 = axis == "x" ?
+    [ 1,  0,  0,
+      0,  c,  s,
+      0, -s,  c, ]
+  : axis == "y" ?
+    [ c,  0, -s,
+      0,  1,  0,
+      s,  0,  c, ]
+  :
+    [ c,  s,  0,
+     -s,  c,  0,
+      0,  0,  1, ]
+
+  return mat;
 }

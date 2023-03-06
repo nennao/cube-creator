@@ -225,7 +225,7 @@ export class Scene {
   }
 
   renderAll() {
-    this.environment.drawEnvironmentMap();
+    // this.environment.drawEnvironmentMap();
     this.cube.draw();
   }
 

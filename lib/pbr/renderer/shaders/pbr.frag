@@ -2,6 +2,10 @@ precision highp float;
 
 #define PI 3.1415926535897932384626433832795
 
+
+uniform int u_Debug;
+
+
 #include <utils.glsl>
 #include <tonemapping.glsl>
 #include <textures.glsl>
@@ -84,7 +88,15 @@ void main()
 #ifdef LINEAR_OUTPUT
     g_finalColor = vec4(color.rgb, baseColor.a);
 #else
-    g_finalColor = vec4(toneMap(color), baseColor.a);
+    vec3 finalColor;
+
+    switch(u_Debug) {
+        case 1: finalColor = linearTosRGB(baseColor.rgb); break;
+        default: finalColor = toneMap(color);
+    }
+    g_finalColor = vec4(finalColor, baseColor.a);
+
+
 #endif
 
 #else
