@@ -593,6 +593,12 @@ export class Rubik {
     utils.handleInputById("envIntensityRange", envIntensity.toString(), "onchange", envIntensityHandler);
     updateDOMVal("envIntensityTxt", `${mR(10 ** envIntensity, 2)} (${mR(envIntensity, 2)})`);
 
+    const envColorHandler = utils.targetListener((t) => {
+      this.scene.environment.color = t.value;
+      this.triggerRedraw();
+    });
+    utils.handleInputById("envColorInput", this.scene.environment.color, "onchange", envColorHandler);
+
     this.initDOMInputsConfig();
   }
 

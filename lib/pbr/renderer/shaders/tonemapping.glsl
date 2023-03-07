@@ -1,5 +1,6 @@
 uniform float u_Exposure;
 uniform int u_Tone;
+uniform vec3 u_EnvColor;
 
 
 const float GAMMA = 2.2;
@@ -122,4 +123,14 @@ vec3 desaturate(vec3 color) {
 
 vec4 desaturate(vec4 color) {
     return vec4(desaturate(color.rgb), color.a);
+}
+
+
+vec3 colorLighting(vec3 color) {
+    float strength = 0.5;
+    return color * (1.0+strength*(u_EnvColor - vec3(0.5)));
+}
+
+vec4 colorLighting(vec4 color) {
+    return vec4(colorLighting(color.rgb), color.a);
 }

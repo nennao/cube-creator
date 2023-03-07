@@ -3,7 +3,7 @@ import { Buffer, IndexBuffer } from "../../../src/js/buffer";
 import { Camera } from "../../../src/js/camera";
 import { Scene } from "../../../src/js/scene";
 import { CubemapShader } from "../../../src/js/shader";
-import { rad } from "../../../src/js/utils";
+import { hexToNRgb, nRgbToHex, rad } from "../../../src/js/utils";
 
 import { loadEnvironment, EnvResources, setTexture } from "./resource_handler";
 
@@ -18,7 +18,7 @@ class EnvironmentRenderer {
   private readonly positions: Buffer;
   private readonly indices: IndexBuffer;
 
-  private envColor = [0.5, 0.5, 0.5];
+  private envColor: [number, number, number] = [0.5, 0.5, 0.5];
   private envIntensity = 10 ** -0.2;
   private envRotation = mat3.create();
   private resources?: EnvResources;
@@ -29,11 +29,10 @@ class EnvironmentRenderer {
     this.camera = scene.camera;
     this.shader = new CubemapShader(gl);
 
-    this.setBG(-0.2);
-
     loadEnvironment(gl, hdrFile).then((envResources) => {
       this.resources = envResources;
       this.scene.initGL();
+      this.setBG();
       this.scene.environmentLoaded = true;
     });
 
@@ -61,7 +60,8 @@ class EnvironmentRenderer {
     this.rotate();
   }
 
-  setBG(val: number) {
+  setBG() {
+    const val = this.intensity;
     const adjust = (x: number) => x * 2 ** val;
     this.gl.clearColor(adjust(this.envColor[0]), adjust(this.envColor[1]), adjust(this.envColor[2]), 1.0);
   }
@@ -79,7 +79,16 @@ class EnvironmentRenderer {
 
   set intensity(val: number) {
     this.envIntensity = 10 ** val;
-    this.setBG(val);
+    this.setBG();
+  }
+
+  get color() {
+    return nRgbToHex(...this.envColor);
+  }
+
+  set color(val: string) {
+    this.envColor = hexToNRgb(val);
+    this.setBG();
   }
 
   drawEnvironmentMap() {
@@ -96,6 +105,7 @@ class EnvironmentRenderer {
     shader.setUniform("u_EnvBlurNormalized", 0.0);
     // shader.setUniform("u_Exposure", 1.0);
 
+    shader.setUniform("u_EnvColor", this.envColor);
     shader.setUniform("u_EnvRotation", this.envRotation);
 
     gl.disable(gl.DEPTH_TEST);
@@ -128,6 +138,7 @@ class EnvironmentRenderer {
 
     shader.setUniform("u_MipCount", resources.mipCount);
 
+    shader.setUniform("u_EnvColor", this.envColor);
     shader.setUniform("u_EnvRotation", this.envRotation);
 
     shader.setUniform("u_EnvIntensity", this.envIntensity);

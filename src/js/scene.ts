@@ -55,7 +55,6 @@ export class Scene {
     this.gl.depthFunc(this.gl.LEQUAL);
     this.gl.cullFace(this.gl.BACK);
 
-    this.gl.clearColor(0.5, 0.5, 0.5, 1.0);
     this.gl.clearDepth(1);
   }
 

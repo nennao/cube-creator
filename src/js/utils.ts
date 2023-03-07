@@ -442,7 +442,7 @@ function rgbToHex(r: number, g: number, b: number) {
 }
 
 export function nRgbToHex(r: number, g: number, b: number) {
-  return rgbToHex(r * 255, g * 255, b * 255);
+  return rgbToHex(mR(r * 255), mR(g * 255), mR(b * 255));
 }
 
 function hexToRgb(hex: string, scale?: number): V3 {

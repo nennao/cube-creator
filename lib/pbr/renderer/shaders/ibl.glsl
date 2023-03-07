@@ -31,13 +31,13 @@ float blockIBL(vec3 rayDir, out vec3 outReflect) {
 
 vec3 getDiffuseLight(vec3 n)
 {
-    return desaturate(texture(u_LambertianEnvSampler, u_EnvRotation * n).rgb) * u_EnvIntensity;
+    return colorLighting(desaturate(texture(u_LambertianEnvSampler, u_EnvRotation * n).rgb)) * u_EnvIntensity;
 }
 
 
 vec4 getSpecularSample(vec3 reflection, float lod)
 {
-    return desaturate(textureLod(u_GGXEnvSampler, u_EnvRotation * reflection, lod)) * u_EnvIntensity;
+    return colorLighting(desaturate(textureLod(u_GGXEnvSampler, u_EnvRotation * reflection, lod))) * u_EnvIntensity;
 }
 
 vec3 getIBLRadianceGGX(vec3 n, vec3 v, float roughness, vec3 F0, float specularWeight, float metallic)
