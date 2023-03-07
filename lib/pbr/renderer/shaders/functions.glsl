@@ -6,11 +6,25 @@ in vec3 v_PositionOrig;
 in vec3 v_Normal;
 in vec3 v_Color;
 
+uniform int u_NonVColor;
+
+
+vec3 sortV3(vec3 v) {
+    v = v.y > v.x && v.y > v.z ? v.yxz :
+    v.z > v.x && v.z > v.y ? v.zyx : v.xyz;
+    v = v.z > v.y ? v.xzy : v.xyz;
+    return v;
+}
+
 
 vec4 getVertexColor()
 {
-   vec4 color = vec4(v_Color, 1.0);
-   return color;
+    vec4 color = vec4(u_NonVColor == 1 ? vec3(1) : v_Color, 1.0);
+    return color;
+}
+
+vec4 metallicColorScale(vec4 color, float metallic) {
+    return vec4(color.rgb / (1.0 - metallic * min(0.4, 1.0-sortV3(color.rgb).r)), color.a);
 }
 
 
@@ -55,9 +69,3 @@ vec4 sq(vec4 t)
     return t * t;
 }
 
-vec3 sortV3(vec3 v) {
-    v = v.y > v.x && v.y > v.z ? v.yxz :
-        v.z > v.x && v.z > v.y ? v.zyx : v.xyz;
-    v = v.z > v.y ? v.xzy : v.xyz;
-    return v;
-}

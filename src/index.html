@@ -32,48 +32,114 @@
 
       <div id="sideMenu" class="hidden">
         <div>
-          <input id="matRadioP1" value="matRadioP1" type="radio" name="matRadio" />
-          <label for="matRadioP1">plastic</label><br />
-          <input id="matRadioP2" value="matRadioP2" type="radio" name="matRadio" />
-          <label for="matRadioP2">shiny plastic</label><br />
-          <input id="matRadioSt" value="matRadioSt" type="radio" name="matRadio" />
-          <label for="matRadioSt">steel</label><br />
-          <input id="matRadioGo" value="matRadioGo" type="radio" name="matRadio" />
-          <label for="matRadioGo">gold</label><br />
-          <input id="matRadioRG" value="matRadioRG" type="radio" name="matRadio" />
-          <label for="matRadioRG">rose gold</label><br />
-          <input id="matRadioSi" value="matRadioSi" type="radio" name="matRadio" />
-          <label for="matRadioSi">silver</label><br />
+          block type<br />
+          <input id="blockTypeRadio_stickered" value="blockTypeRadio_stickered" type="radio" name="blockTypeRadio" />
+          <label for="blockTypeRadio_stickered">stickered</label>
+          <input
+            id="blockTypeRadio_stickerless"
+            value="blockTypeRadio_stickerless"
+            type="radio"
+            name="blockTypeRadio"
+          />
+          <label for="blockTypeRadio_stickerless">stickerless</label>
+          <br />
+
+          block color
+          <div id="blockColor_stickered" class="hidden">
+            <input id="blockColorRadio_bl" value="blockColorRadio_bl" type="radio" name="blockColorRadio" />
+            <label for="blockColorRadio_bl">black</label>
+            <input id="blockColorRadio_custom" value="blockColorRadio_custom" type="radio" name="blockColorRadio" />
+            <label for="blockColorRadio_custom">custom <input type="color" id="blockColorInput" /></label><br />
+            <input id="blockColorRadio_st" value="blockColorRadio_st" type="radio" name="blockColorRadio" />
+            <label for="blockColorRadio_st">steel</label>
+            <input id="blockColorRadio_si" value="blockColorRadio_si" type="radio" name="blockColorRadio" />
+            <label for="blockColorRadio_si">silver</label><br />
+            <input id="blockColorRadio_go" value="blockColorRadio_go" type="radio" name="blockColorRadio" />
+            <label for="blockColorRadio_go">gold</label>
+            <input id="blockColorRadio_rg" value="blockColorRadio_rg" type="radio" name="blockColorRadio" />
+            <label for="blockColorRadio_rg">rose gold</label><br />
+          </div>
+          <div id="blockColor_stickerless" class="hidden">
+            <input id="blockColorRadio_classic" value="blockColorRadio_classic" type="radio" name="blockColorRadio2" />
+            <label for="blockColorRadio_classic">classic</label>
+            <input id="blockColorRadio_bright" value="blockColorRadio_bright" type="radio" name="blockColorRadio2" />
+            <label for="blockColorRadio_bright">bright</label><br />
+          </div>
+          <br />
+          <label for="blockMetallicRange">metallicness</label>
+          <input id="blockMetallicRange" type="range" min="0" max="1" step="0.1" />
+          <div id="blockMetallicTxt"></div>
+
+          <label for="blockRoughnessRange">roughness</label>
+          <input id="blockRoughnessRange" type="range" min="0" max="0.5" step="0.05" />
+          <div id="blockRoughnessTxt"></div>
         </div>
+
+        <div><input type="checkbox" id="addStickersCheck" /><label for="addStickersCheck">add stickers</label></div>
+        <div id="faceStickerOptions" class="hidden">
+          stickers color
+          <div>
+            <input id="faceColorRadio_classic" value="faceColorRadio_classic" type="radio" name="faceColorRadio" />
+            <label for="faceColorRadio_classic">classic</label>
+            <input id="faceColorRadio_bright" value="faceColorRadio_bright" type="radio" name="faceColorRadio" />
+            <label for="faceColorRadio_bright">bright</label><br />
+            single color:<br />
+            <input id="faceColorRadio_custom" value="faceColorRadio_custom" type="radio" name="faceColorRadio" />
+            <label for="faceColorRadio_custom">custom <input type="color" id="faceColorInput" /></label><br />
+            <input id="faceColorRadio_st" value="faceColorRadio_st" type="radio" name="faceColorRadio" />
+            <label for="faceColorRadio_st">steel</label>
+            <input id="faceColorRadio_si" value="faceColorRadio_si" type="radio" name="faceColorRadio" />
+            <label for="faceColorRadio_si">silver</label><br />
+            <input id="faceColorRadio_go" value="faceColorRadio_go" type="radio" name="faceColorRadio" />
+            <label for="faceColorRadio_go">gold</label>
+            <input id="faceColorRadio_rg" value="faceColorRadio_rg" type="radio" name="faceColorRadio" />
+            <label for="faceColorRadio_rg">rose gold</label><br />
+          </div>
+          <br />
+          <label for="faceMetallicRange">metallicness</label>
+          <input id="faceMetallicRange" type="range" min="0" max="1" step="0.1" />
+          <div id="faceMetallicTxt"></div>
+
+          <label for="faceRoughnessRange">roughness</label>
+          <input id="faceRoughnessRange" type="range" min="0" max="0.5" step="0.05" />
+          <div id="faceRoughnessTxt"></div>
+        </div>
+
         <div>
           <label for="spreadRange">block spread</label>
-          <input id="spreadRange" type="range" min="0" max="20" />
+          <input id="spreadRange" type="range" min="1" max="1.5" step="0.025" />
           <div id="spreadTxt"></div>
         </div>
         <div>
           <label for="blockRRange">block roundness</label>
-          <input id="blockRRange" type="range" min="0" max="20" />
+          <input id="blockRRange" type="range" min="0" max="1" step="0.05" />
           <div id="blockRTxt"></div>
         </div>
         <div>
           <label for="faceCoverRange">face coverage</label>
-          <input id="faceCoverRange" type="range" min="0" max="20" />
+          <input id="faceCoverRange" type="range" min="0" max="1" step="0.05" />
           <div id="faceCoverTxt"></div>
         </div>
         <div>
           <label for="faceRRange">face roundness</label>
-          <input id="faceRRange" type="range" min="0" max="20" />
+          <input id="faceRRange" type="range" min="0" max="1" step="0.05" />
           <div id="faceRTxt"></div>
         </div>
         <div>
           <label for="faceRingWRange">face ring thickness</label>
-          <input id="faceRingWRange" type="range" min="0" max="20" />
+          <input id="faceRingWRange" type="range" min="0" max="1" step="0.05" />
           <div id="faceRingWTxt"></div>
         </div>
         <div>
           <label for="faceExtrudeRange">face extrusion</label>
-          <input id="faceExtrudeRange" type="range" min="0" max="50" />
+          <input id="faceExtrudeRange" type="range" min="0" max="0.1" step="0.005" />
           <div id="faceExtrudeTxt"></div>
+        </div>
+
+        <div>
+          <label for="envIntensityRange">lighting intensity</label>
+          <input id="envIntensityRange" type="range" min="-2" max="0.8" step="0.1" />
+          <div id="envIntensityTxt"></div>
         </div>
       </div>
 

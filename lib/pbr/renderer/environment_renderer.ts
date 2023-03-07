@@ -18,6 +18,8 @@ class EnvironmentRenderer {
   private readonly positions: Buffer;
   private readonly indices: IndexBuffer;
 
+  private envColor = [0.5, 0.5, 0.5];
+  private envIntensity = 10 ** -0.2;
   private envRotation = mat3.create();
   private resources?: EnvResources;
 
@@ -26,6 +28,8 @@ class EnvironmentRenderer {
     this.scene = scene;
     this.camera = scene.camera;
     this.shader = new CubemapShader(gl);
+
+    this.setBG(-0.2);
 
     loadEnvironment(gl, hdrFile).then((envResources) => {
       this.resources = envResources;
@@ -57,11 +61,25 @@ class EnvironmentRenderer {
     this.rotate();
   }
 
+  setBG(val: number) {
+    const adjust = (x: number) => x * 2 ** val;
+    this.gl.clearColor(adjust(this.envColor[0]), adjust(this.envColor[1]), adjust(this.envColor[2]), 1.0);
+  }
+
   rotate() {
     let mat = mat4.create();
     mat4.rotateY(mat, mat, rad(155));
     mat4.rotateX(mat, mat, rad(-15));
     mat3.fromMat4(this.envRotation, mat);
+  }
+
+  get intensity() {
+    return Math.log10(this.envIntensity);
+  }
+
+  set intensity(val: number) {
+    this.envIntensity = 10 ** val;
+    this.setBG(val);
   }
 
   drawEnvironmentMap() {
@@ -112,7 +130,7 @@ class EnvironmentRenderer {
 
     shader.setUniform("u_EnvRotation", this.envRotation);
 
-    shader.setUniform("u_EnvIntensity", 1);
+    shader.setUniform("u_EnvIntensity", this.envIntensity);
 
     return texSlotOffset;
   }

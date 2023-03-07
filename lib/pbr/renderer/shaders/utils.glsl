@@ -1,3 +1,5 @@
+uniform float u_EnvIntensity;
+
 const float BLOCK_R = 0.5;
 
 
@@ -233,6 +235,9 @@ vec3 adjustV(vec3 v, int axis) {
     return axis == 1 ? v.yxz : axis == 2 ? v.zyx : v;
 }
 
+float envIntensityAdjusted() {
+    return u_EnvIntensity > 1.0 ? 0.75 + u_EnvIntensity * 0.25 : u_EnvIntensity * 0.5 + 0.5;
+}
 
 float blockOcclusion(
     mat3 invMat, vec3 fragPosition, vec3 origPos, float blockR, float spreadRaw, float currAngle, int axis, int level
@@ -252,8 +257,8 @@ float blockOcclusion(
     vec3 pos = abs(rotating && int(origPosAdj.x) == level ? rotate(pos0, -currAngle, axis) : pos0);
 
     float innerBound = BLOCK_R + spread2;
-    float lightStrength = 1.6, lightTravel = 1.2;
-    //    float lightStrength = u_AOLightS, lightTravel = u_AOLightT;
+    float lightStrength = 1.6 * envIntensityAdjusted(), lightTravel = 1.2;
+    //    float lightStrength = u_AOLightS * envIntensityAdjusted(), lightTravel = u_AOLightT;
 
     float planesStrength = spread * lightStrength;
     float planesTravel = planesStrength * lightTravel;

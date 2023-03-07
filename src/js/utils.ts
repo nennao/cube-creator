@@ -86,6 +86,14 @@ export function getElementById(id: string) {
   return el;
 }
 
+export function getInputById(id: string) {
+  const el = getElementById(id);
+  if (el instanceof HTMLInputElement) {
+    return el;
+  }
+  throw `input element "${id}" not found`;
+}
+
 export function targetListener(listener: (t: HTMLInputElement) => void) {
   return (e: Event) => {
     listener(e.target as HTMLInputElement);
@@ -427,4 +435,29 @@ export function mat3Rotation90(axis: "x" | "y" | "z", turns: number) {
       0,  0,  1, ]
 
   return mat;
+}
+
+function rgbToHex(r: number, g: number, b: number) {
+  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+export function nRgbToHex(r: number, g: number, b: number) {
+  return rgbToHex(r * 255, g * 255, b * 255);
+}
+
+function hexToRgb(hex: string, scale?: number): V3 {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!result) {
+    console.warn("couldnt parse hex string:", hex);
+    return [0, 0, 0];
+  }
+  return [
+    parseInt(result[1], 16) / (scale || 1),
+    parseInt(result[2], 16) / (scale || 1),
+    parseInt(result[3], 16) / (scale || 1),
+  ];
+}
+
+export function hexToNRgb(hex: string): V3 {
+  return hexToRgb(hex, 255);
 }

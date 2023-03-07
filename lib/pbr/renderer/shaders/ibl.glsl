@@ -1,4 +1,4 @@
-uniform float u_EnvIntensity;
+//uniform float u_EnvIntensity;
 
 
 uniform int u_Axis;

@@ -110,7 +110,7 @@ vec4 getBaseColor()
     baseColor *= texture(u_BaseColorSampler, getBaseColorUV());
 #endif
 
-    return sRGBToLinear(baseColor * getVertexColor());
+    return sRGBToLinear(metallicColorScale(baseColor * getVertexColor(), u_MetallicFactor));
 }
 
 
