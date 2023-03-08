@@ -178,27 +178,36 @@ class Face {
     this.side = side;
     this.faceId = faceId || getFaceId(axis, side);
 
-    const [v, i, c] = this.initGeo();
+    const [v, i, c, n] = this.initGeo();
 
-    this._geometry = new Geometry(gl, v, c, i);
+    this._geometry = new Geometry(gl, v, c, i, n);
     this.initPosition();
   }
 
   initGeo() {
     const { root, axis, side, faceId } = this;
-    const { faceColor, faceColorCustom6 } = this.root.config;
-    const [v, i] = extrudedRingData(root.faceCoverAdj, 0.5, root.faceR, root.faceRingW, root.faceExtrude);
+    const { faceColor, faceColorCustom6 } = root.config;
+    const [v, i, n] = this.root.faceGeoData;
     const vertices = orientFace(v, axis, side);
+    const normals = orientFace(n, axis, side);
+
+    // const colors3: V3[] = Array.from({ length: vertices.length }, () => [Math.random(), Math.random(), Math.random()]);
+    // const colors4: V3[] = Array.from({ length: vertices.length / 3 }, () => {
+    //   const col: V3 = [Math.random(), Math.random(), Math.random()];
+    //   return [col, col, col];
+    // }).flat();
+
     const colors =
       faceColor == "custom6"
         ? Array(vertices.length).fill(faceColorCustom6[faceId])
         : getFaceColors(faceId, vertices.length, this.root.config.faceColor);
-    return [vertices, i, colors];
+
+    return [vertices, i, colors, normals];
   }
 
   updateGeo() {
-    const [v, i, c] = this.initGeo();
-    this.geometry.update(v, c, i);
+    const [v, i, c, n] = this.initGeo();
+    this.geometry.update(v, c, i, n);
   }
 
   private initPosition() {
@@ -436,6 +445,7 @@ export class Rubik {
   private showBounding = false;
 
   _blockGeoData: [V3[], V3[], number[][]] = [[], [], []];
+  _faceGeoData: [V3[], V3[], V3[]] = [[], [], []];
 
   private boundingBox: [Axis, Side, TriVec3[]][] | undefined;
   private bounds: FaceBounds[] | undefined;
@@ -449,10 +459,11 @@ export class Rubik {
   blockRays = true;
   blockAO = true;
 
-  _spread = 1.05;
+  _spread = 1.025;
   blockR = 0.15;
-  faceCover = 0.75;
+  faceCover = 0.85;
   faceR = 0.15;
+  faceEdgeR = 0.5;
   faceRingW = 1;
   faceExtrude = 0.005;
 
@@ -479,7 +490,7 @@ export class Rubik {
 
   get faceCoverAdj() {
     const blockSide = 1 - this.blockR;
-    return Math.min(this.faceCover, blockSide);
+    return this.faceCover * blockSide;
   }
 
   get cubeR() {
@@ -510,6 +521,7 @@ export class Rubik {
 
     this.updateBoundingBox();
 
+    this.updateFaceGeo();
     this.updateBlockGeo();
     this.blocks = this.createBlocks();
 
@@ -525,6 +537,16 @@ export class Rubik {
   get blockGeoData(): [V3[], V3[], number[][]] {
     const [v, i, s] = this._blockGeoData;
     return [[...v], [...i], [...s]];
+  }
+
+  private updateFaceGeo() {
+    const { faceCoverAdj, faceR, faceRingW, faceExtrude, faceEdgeR } = this;
+    this._faceGeoData = extrudedRingData(faceCoverAdj, 0.5, faceR, faceRingW, faceExtrude, faceEdgeR);
+  }
+
+  get faceGeoData(): [V3[], V3[], V3[]] {
+    const [v, i, n] = this._faceGeoData;
+    return [[...v], [...i], n.map((v) => v)];
   }
 
   private createBlocks() {
@@ -592,11 +614,13 @@ export class Rubik {
     utils.handleInputById("spreadRange", this._spread.toString(), "onchange", spreadHandler);
     updateDOMVal("spreadTxt", this._spread);
 
-    for (let id of ["blockR", "faceCover", "faceR", "faceRingW", "faceExtrude"] as const) {
+    for (let id of ["blockR", "faceCover", "faceR", "faceEdgeR", "faceRingW", "faceExtrude"] as const) {
       const handler = utils.targetListener((t) => {
         const prevCover = this.faceCoverAdj;
         this[id] = +t.value;
-        this.updateGeo(id == "blockR", id == "blockR", id != "blockR" || this.faceCoverAdj != prevCover);
+        id == "blockR" && this.updateBlockGeo();
+        (id != "blockR" || this.faceCoverAdj != prevCover) && this.updateFaceGeo();
+        this.updateGeo(id == "blockR", id != "blockR" || this.faceCoverAdj != prevCover);
         this.triggerRedraw();
         updateDOMVal(`${id}Txt`, this[id]);
       });
@@ -650,7 +674,7 @@ export class Rubik {
 
     const blockTypeHandler = utils.targetListener((t) => {
       this.config.blockType = t.value == "blockTypeRadio_stickered" ? "stickered" : "stickerless";
-      this.updateGeo(false, true, false);
+      this.updateGeo(true, false);
       this.triggerRedraw();
       toggleBlockColorRadios();
     });
@@ -696,7 +720,7 @@ export class Rubik {
       faces.forEach((f, i) => {
         const handler = utils.targetListener((t) => {
           this.config[colorCustom6][f] = utils.hexToNRgb(t.value);
-          this.updateGeo(false, type == "block", type == "face");
+          this.updateGeo(type == "block", type == "face");
           this.triggerRedraw();
         });
         const col = this.config[colorCustom6][f];
@@ -706,7 +730,7 @@ export class Rubik {
 
     const blockColorHandler2 = utils.targetListener((t) => {
       this.config.blockColor2 = t.value.split("_")[1];
-      this.updateGeo(false, true, false);
+      this.updateGeo(true, false);
       this.triggerRedraw();
       toggleColorInputs6("block", "blockColor2");
     });
@@ -733,17 +757,14 @@ export class Rubik {
     const faceColorHandler = utils.targetListener((t) => {
       this.config.faceColor = t.value.split("_")[1];
       const update = COLOR_SCHEMES.hasOwnProperty(this.config.faceColor) || this.config.faceColor == "custom6";
-      update && this.updateGeo(false, false, true);
+      update && this.updateGeo(false, true);
       this.triggerRedraw();
       toggleColorInputs6("face", "faceColor");
     });
     utils.handleRadioByName("faceColorRadio", `faceColorRadio_${faceColor}`, faceColorHandler);
   }
 
-  updateGeo(updateBlockData: boolean, updateBlocks: boolean, updateFaces: boolean) {
-    if (updateBlockData) {
-      this.updateBlockGeo();
-    }
+  updateGeo(updateBlocks: boolean, updateFaces: boolean) {
     for (let block of this.blocks) {
       if (updateBlocks) {
         block.updateGeo();

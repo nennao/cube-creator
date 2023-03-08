@@ -96,17 +96,21 @@ export function extrudedRingData(
   z: number,
   rPercent: number,
   wPercent: number,
-  extrude: number
-): [V3[], V3[]] {
+  extrude: number,
+  edgeR: number
+): [V3[], V3[], V3[]] {
   const eps = 0.001;
+  rPercent = edgeR < 0.01 ? rPercent : Math.max(0.02, rPercent);
 
-  const top = roundedRingData(side, z + Math.max(extrude, eps), rPercent, wPercent);
+  const [positions, indices] = roundedRingData(side, z + Math.max(extrude, eps), rPercent, wPercent);
 
   if (extrude <= eps) {
-    return top;
+    return [positions, indices, []];
   }
 
-  const [positions, indices] = top;
+  if (edgeR >= 0.01) {
+    return roundedExtrudedRingData(indices, side, z, rPercent, wPercent, extrude, edgeR);
+  }
 
   const ring = !(wPercent > 0.99);
   const circle = rPercent > 0.99;
@@ -131,7 +135,75 @@ export function extrudedRingData(
   const allPositions = [...positions, ...upperPos, ...lowerPos];
   const allIndices = [...indices, ...innerI, ...outerI];
 
-  return square ? convertToFacePositions(allPositions, allIndices) : [allPositions, allIndices];
+  return square ? [...convertToFacePositions(allPositions, allIndices), []] : [allPositions, allIndices, []];
+}
+
+export function roundedExtrudedRingData(
+  faceIndices: V3[],
+  side: number,
+  z: number,
+  rPercent: number,
+  wPercent: number,
+  extrude: number,
+  edgeR: number
+): [V3[], V3[], V3[]] {
+  if (wPercent < 0.01) {
+    wPercent = 0.01;
+  }
+  const ring = !(wPercent > 0.99);
+
+  const innerSide = (1 - wPercent) * side;
+
+  const maxR = Math.min(extrude, ring ? (side - innerSide) / 4 : side / 2);
+  const r = edgeR * maxR;
+
+  const upperPosOuter0 = roundedSquarePositions(side - r * 2, z + extrude, rPercent, ring);
+  const upperPosInner0 = ring ? roundedSquarePositions(innerSide + r * 2, z + extrude, rPercent, true) : [];
+
+  const len0 = upperPosOuter0.length + upperPosInner0.length;
+  let len = 0;
+
+  const positions = [];
+  const indices = [];
+
+  for (let [iSide, dir, inner] of [
+    [side, 1, 0],
+    [innerSide, -1, 1],
+  ]) {
+    const upperPos = roundedSquarePositions(iSide, z + extrude, rPercent, true);
+    const lowerPos = upperPos.map((p): V3 => [p[0], p[1], z]);
+
+    const upperPos1 = roundedSquarePositions(iSide - r * dir * 2, z + extrude, rPercent, true);
+
+    const upperPos2 = upperPos.map((p, i) => {
+      const cp: V3 = [upperPos1[i][0], upperPos1[i][1], upperPos1[i][2] - r];
+      return vec3ToV3(vec3.lerp(vec3.create(), cp, p, r / vec3.distance(p, cp)));
+    });
+
+    const upperPos3 = upperPos.map((p): V3 => [p[0], p[1], p[2] - r]);
+    len = upperPos.length;
+
+    const ar = arrayRange;
+
+    const i1 = indexRingToTriangles(ar(len, len0 + (0 + 5 * inner) * len), ar(len, len0 + (1 + 3 * inner) * len));
+    const i2 = indexRingToTriangles(ar(len, len0 + (1 + 5 * inner) * len), ar(len, len0 + (2 + 3 * inner) * len));
+    const iF = indexRingToTriangles(ar(len, len0 + (2 + 5 * inner) * len), ar(len, len0 + (3 + 3 * inner) * len));
+
+    positions.push([...upperPos1, ...upperPos2, ...upperPos3, ...lowerPos]);
+    indices.push([...i1, ...i2, ...iF]);
+  }
+  const allPositions = [...upperPosInner0, ...upperPosOuter0, ...positions[0], ...positions[1]];
+  const allIndices = [...faceIndices, ...indices[0], ...indices[1]];
+
+  const normalsOverride: V3[] = [];
+  for (let i = 0; i < len; i++) {
+    const j = len0 + 0 * len + i;
+    const k = len0 + 4 * len + i;
+    normalsOverride[j] = [0, 0, 1];
+    normalsOverride[k] = [0, 0, 1];
+  }
+  // return [...convertToFacePositions(allPositions, allIndices), []];
+  return [allPositions, allIndices, normalsOverride];
 }
 
 export function roundedRingData(side: number, z: number, rPercent: number, wPercent: number): [V3[], V3[]] {

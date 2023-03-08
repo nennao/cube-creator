@@ -5,7 +5,7 @@ import { SimpleShader } from "./shader";
 import { V3, vec3ToV3 } from "./utils";
 import { PBRShader } from "../../lib/pbr/renderer/pbr_shader";
 
-function calculateNormals(positions: V3[], indices: V3[]) {
+function calculateNormals(positions: V3[], indices: V3[], override: V3[] = []) {
   const normals = Array.from({ length: positions.length }, () => vec3.create());
 
   for (let [i0, i1, i2] of indices) {
@@ -22,7 +22,7 @@ function calculateNormals(positions: V3[], indices: V3[]) {
       vec3.add(normals[idx], normals[idx], normal);
     }
   }
-  return normals.map((n) => vec3ToV3(vec3.normalize(n, n))).flat();
+  return normals.map((n, i) => override[i] || vec3ToV3(vec3.normalize(n, n))).flat();
 }
 
 export class Geometry {
@@ -33,10 +33,10 @@ export class Geometry {
   private readonly indices: IndexBuffer;
   transform: mat4;
 
-  constructor(gl: WebGL2RenderingContext, positions: V3[], colors: V3[], indices: V3[]) {
+  constructor(gl: WebGL2RenderingContext, positions: V3[], colors: V3[], indices: V3[], normalsOverride?: V3[]) {
     this.gl = gl;
 
-    const normals = calculateNormals(positions, indices);
+    const normals = calculateNormals(positions, indices, normalsOverride);
     this.positions = new Buffer(gl, positions.flat(), 3, gl.FLOAT);
     this.colors = new Buffer(gl, colors.flat(), 3, gl.FLOAT);
     this.normals = new Buffer(gl, normals, 3, gl.FLOAT);
@@ -45,8 +45,8 @@ export class Geometry {
     this.transform = mat4.create();
   }
 
-  update(positions: V3[], colors: V3[], indices: V3[]) {
-    const normals = calculateNormals(positions, indices);
+  update(positions: V3[], colors: V3[], indices: V3[], normalsOverride?: V3[]) {
+    const normals = calculateNormals(positions, indices, normalsOverride);
     this.positions.write(positions.flat());
     this.colors.write(colors.flat());
     this.normals.write(normals.flat());

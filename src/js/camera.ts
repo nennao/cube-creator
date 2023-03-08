@@ -76,7 +76,7 @@ export class Camera {
   }
 
   handleZoom(delta: number) {
-    this.distance = mR(this.distance + delta, 2);
+    this.distance = mR(this.distance + delta, 3);
     if (this.distance > 30) this.distance = 30;
     if (this.distance < 6) this.distance = 6;
   }
@@ -84,7 +84,7 @@ export class Camera {
   private handleWheelZoom() {
     this.gl.canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
-      this.handleZoom(e.deltaY * 0.05);
+      this.handleZoom(e.deltaY * 0.025);
     });
   }
 }
