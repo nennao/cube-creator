@@ -7,6 +7,7 @@ in vec3 v_Normal;
 in vec3 v_Color;
 
 uniform int u_NonVColor;
+uniform int u_ProcColor;
 
 
 vec3 sortV3(vec3 v) {
@@ -25,6 +26,14 @@ vec4 getVertexColor()
 
 vec4 metallicColorScale(vec4 color, float metallic) {
     return vec4(color.rgb / (1.0 - metallic * min(0.4, 1.0-sortV3(color.rgb).r)), color.a);
+}
+
+vec4 proceduralAdjustment(vec4 color) {
+    if (u_ProcColor==1) {
+        vec3 n2 = vec3(0.08) + sin(v_PositionOrig) / 10.0;
+        return vec4(normalize(n2), color.a);
+    }
+    return color;
 }
 
 

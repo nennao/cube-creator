@@ -65,18 +65,20 @@ function orientFace(vertices: V3[], axis: Axis, side: Side): V3[] {
   return vertices.map((v) => vec3ToV3(rotateFn(vec3.create(), v, [0, 0, 0], rad(angle))));
 }
 
+type ColorSet = { R: V3; U: V3; F: V3; L: V3; D: V3; B: V3 };
+
 // prettier-ignore
-const COLORS_CLASSIC = {
-    [FaceId.L]: [0.70, 0.30, 0.00], [FaceId.R]: [0.60, 0.00, 0.10],
-    [FaceId.D]: [0.90, 0.90, 0.15], [FaceId.U]: [0.85, 0.88, 0.90],
-    [FaceId.B]: [0.00, 0.20, 0.55], [FaceId.F]: [0.00, 0.45, 0.22],
-  };
+const COLORS_CLASSIC: ColorSet = {
+  [FaceId.L]: [0.70, 0.30, 0.00], [FaceId.R]: [0.60, 0.00, 0.10],
+  [FaceId.D]: [0.90, 0.90, 0.15], [FaceId.U]: [0.85, 0.88, 0.90],
+  [FaceId.B]: [0.00, 0.20, 0.55], [FaceId.F]: [0.00, 0.45, 0.22],
+};
 // prettier-ignore
-const COLORS_BRIGHT = {
+const COLORS_BRIGHT: ColorSet = {
   [FaceId.L]: [0.90, 0.42, 0.10], [FaceId.R]: [0.81, 0.39, 0.58],
   [FaceId.D]: [0.95, 0.90, 0.20], [FaceId.U]: [0.85, 0.85, 0.85],
   [FaceId.B]: [0.24, 0.62, 0.81], [FaceId.F]: [0.45, 0.75, 0.15],
-  };
+};
 
 const COLOR_SCHEMES = {
   classic: COLORS_CLASSIC,
@@ -131,6 +133,10 @@ const COLORS: { [key: string]: [number, number, number] } = {
   rg: [0.6, 0.42, 0.36],
 };
 
+const COLORS_PROC: { [key: string]: number } = {
+  colorful: 1,
+};
+
 class FaceBounds {
   private readonly root: Rubik;
   private readonly _geometry: Geometry;
@@ -180,9 +186,13 @@ class Face {
 
   initGeo() {
     const { root, axis, side, faceId } = this;
+    const { faceColor, faceColorCustom6 } = this.root.config;
     const [v, i] = extrudedRingData(root.faceCoverAdj, 0.5, root.faceR, root.faceRingW, root.faceExtrude);
     const vertices = orientFace(v, axis, side);
-    const colors = getFaceColors(faceId, vertices.length, this.root.config.faceColor);
+    const colors =
+      faceColor == "custom6"
+        ? Array(vertices.length).fill(faceColorCustom6[faceId])
+        : getFaceColors(faceId, vertices.length, this.root.config.faceColor);
     return [vertices, i, colors];
   }
 
@@ -239,7 +249,7 @@ class Block {
   }
 
   initGeo() {
-    const { blockType, blockColor2 } = this.root.config;
+    const { blockType, blockColor2, blockColorCustom6 } = this.root.config;
     const stickerless = blockType == "stickerless";
 
     let faces = vec3ToV3(this.origPosition)
@@ -267,9 +277,13 @@ class Block {
     const colors0: () => V3[] = () => Array(vCount).fill([1, 1, 1]);
     const colors1: () => V3[] = () =>
       faces
-        .map((f) =>
-          getFaceColors(getFaceId([Axis.x, Axis.y, Axis.z][f % 3], f < 3 ? 1 : -1), vCount / faces.length, blockColor2)
-        )
+        .map((f) => {
+          const faceId = getFaceId([Axis.x, Axis.y, Axis.z][f % 3], f < 3 ? 1 : -1);
+          const count = vCount / faces.length;
+          return blockColor2 == "custom6"
+            ? Array(count).fill(blockColorCustom6[faceId])
+            : getFaceColors(faceId, count, blockColor2);
+        })
         .flat();
 
     const colors = stickerless ? colors1() : colors0();
@@ -352,9 +366,12 @@ class Block {
     this.root.shader.setUniform("u_FaceRotation", this.faceRotation);
 
     const baseColor = [...(COLORS[blockColor] || blockColorCustom), 1];
+    const procColor = COLORS_PROC[blockColor] || 0;
 
     this.root.shader.setUniform("u_BaseColorFactor", stickered ? baseColor : [1, 1, 1, 1]);
     this.root.shader.setUniform("u_NonVColor", stickered ? 1 : 0);
+    this.root.shader.setUniform("u_ProcColor", stickered ? procColor : 0);
+
     this.root.shader.setUniform("u_MetallicFactor", blockMetallic);
     this.root.shader.setUniform("u_RoughnessFactor", blockRoughness);
 
@@ -366,12 +383,14 @@ class Block {
 
   drawFaces() {
     const { faceMetallic, faceRoughness, faceColor, faceColorCustom } = this.root.config;
-    const useVColor = COLOR_SCHEMES.hasOwnProperty(faceColor);
+    const useVColor = COLOR_SCHEMES.hasOwnProperty(faceColor) || faceColor == "custom6";
 
     const baseColor = [...(COLORS[faceColor] || faceColorCustom), 1];
+    const procColor = COLORS_PROC[faceColor] || 0;
 
     this.root.shader.setUniform("u_BaseColorFactor", useVColor ? [1, 1, 1, 1] : baseColor);
     this.root.shader.setUniform("u_NonVColor", useVColor ? 0 : 1);
+    this.root.shader.setUniform("u_ProcColor", useVColor ? 0 : procColor);
     this.root.shader.setUniform("u_EnableBlockingAO", 0);
     this.root.shader.setUniform("u_MetallicFactor", faceMetallic);
     this.root.shader.setUniform("u_RoughnessFactor", faceRoughness);
@@ -389,9 +408,11 @@ type Config = {
   blockColor2: string;
   blockMetallic: number;
   blockRoughness: number;
+  blockColorCustom6: ColorSet;
   addStickers: boolean;
   faceColor: string;
   faceColorCustom: [number, number, number];
+  faceColorCustom6: ColorSet;
   faceMetallic: number;
   faceRoughness: number;
 };
@@ -440,11 +461,14 @@ export class Rubik {
     blockColor: "bl",
     blockColorCustom: [0, 0, 0],
     blockColor2: "bright",
+    blockColorCustom6: { ...COLORS_CLASSIC },
     blockMetallic: 0,
     blockRoughness: 0.25,
+
     addStickers: true,
     faceColor: "classic",
     faceColorCustom: [0, 0, 0],
+    faceColorCustom6: { ...COLORS_CLASSIC },
     faceMetallic: 0,
     faceRoughness: 0.25,
   };
@@ -610,8 +634,8 @@ export class Rubik {
     };
 
     const toggleStickerOptions = () => {
-      const options = this.config.addStickers;
-      utils.getElementById("faceStickerOptions").classList[options ? "remove" : "add"]("hidden");
+      const show = this.config.addStickers;
+      utils.getElementById("faceStickerOptions").classList[show ? "remove" : "add"]("hidden");
     };
 
     const toggleBlockColorRadios = () => {
@@ -623,6 +647,7 @@ export class Rubik {
       utils.getInputById("addStickersCheck").checked = this.config.addStickers;
       toggleStickerOptions();
     };
+
     const blockTypeHandler = utils.targetListener((t) => {
       this.config.blockType = t.value == "blockTypeRadio_stickered" ? "stickered" : "stickerless";
       this.updateGeo(false, true, false);
@@ -638,29 +663,54 @@ export class Rubik {
     });
     utils.handleRadioByName("blockColorRadio", `blockColorRadio_${blockColor}`, blockColorHandler);
 
+    const toggleColorInputs6 = (type: string, prop: "blockColor2" | "faceColor") => {
+      const show = this.config[prop] == "custom6";
+      utils.getElementById(`${type}ColorInputs6`).classList[show ? "remove" : "add"]("hidden");
+    };
+
+    const faces = ["R", "U", "F", "L", "D", "B"] as const;
+
+    for (let type of ["block", "face"]) {
+      const color = type == "block" ? "blockColor" : "faceColor";
+      const colorCustom = type == "block" ? "blockColorCustom" : "faceColorCustom";
+      const colorCustom6 = type == "block" ? "blockColorCustom6" : "faceColorCustom6";
+
+      const handler = utils.targetListener((t) => {
+        this.config[colorCustom] = utils.hexToNRgb(t.value);
+        this.config[color] = "custom";
+        utils.getInputById(`${type}ColorRadio_custom`).checked = true;
+        this.triggerRedraw();
+      });
+      utils.handleInputById(`${type}ColorInput`, utils.nRgbToHex(...this.config[colorCustom]), "onchange", handler);
+
+      utils.getElementById(`${type}ColorInputs6`).innerHTML = faces
+        .map(
+          (f, i) =>
+            `<label for="${type}ColorInput_${i}">${f}</label> <input type="color" id="${type}ColorInput_${i}" style="width: 45px"/>
+           ${i == 2 ? "<br>" : ""}`
+        )
+        .join("");
+
+      toggleColorInputs6(type, type == "block" ? "blockColor2" : "faceColor");
+
+      faces.forEach((f, i) => {
+        const handler = utils.targetListener((t) => {
+          this.config[colorCustom6][f] = utils.hexToNRgb(t.value);
+          this.updateGeo(false, type == "block", type == "face");
+          this.triggerRedraw();
+        });
+        const col = this.config[colorCustom6][f];
+        utils.handleInputById(`${type}ColorInput_${i}`, utils.nRgbToHex(...col), "onchange", handler);
+      });
+    }
+
     const blockColorHandler2 = utils.targetListener((t) => {
       this.config.blockColor2 = t.value.split("_")[1];
       this.updateGeo(false, true, false);
       this.triggerRedraw();
+      toggleColorInputs6("block", "blockColor2");
     });
     utils.handleRadioByName("blockColorRadio2", `blockColorRadio_${blockColor2}`, blockColorHandler2);
-
-    for (let id of ["block", "face"] as const) {
-      const color = id == "block" ? "blockColor" : "faceColor";
-      const colorCustom = id == "block" ? "blockColorCustom" : "faceColorCustom";
-      const customColorHandler = utils.targetListener((t) => {
-        this.config[colorCustom] = utils.hexToNRgb(t.value);
-        this.config[color] = "custom";
-        utils.getInputById(`${id}ColorRadio_custom`).checked = true;
-        this.triggerRedraw();
-      });
-      utils.handleInputById(
-        `${id}ColorInput`,
-        utils.nRgbToHex(...this.config[colorCustom]),
-        "onchange",
-        customColorHandler
-      );
-    }
 
     for (let id of ["blockMetallic", "blockRoughness", "faceMetallic", "faceRoughness"] as const) {
       const handler = utils.targetListener((t) => {
@@ -682,9 +732,10 @@ export class Rubik {
 
     const faceColorHandler = utils.targetListener((t) => {
       this.config.faceColor = t.value.split("_")[1];
-      const update = COLOR_SCHEMES.hasOwnProperty(this.config.faceColor);
+      const update = COLOR_SCHEMES.hasOwnProperty(this.config.faceColor) || this.config.faceColor == "custom6";
       update && this.updateGeo(false, false, true);
       this.triggerRedraw();
+      toggleColorInputs6("face", "faceColor");
     });
     utils.handleRadioByName("faceColorRadio", `faceColorRadio_${faceColor}`, faceColorHandler);
   }

@@ -106,6 +106,8 @@ vec4 getBaseColor()
 
     baseColor = u_BaseColorFactor;
 
+    baseColor = proceduralAdjustment(baseColor);
+
 #if defined(MATERIAL_METALLICROUGHNESS) && defined(HAS_BASE_COLOR_MAP)
     baseColor *= texture(u_BaseColorSampler, getBaseColorUV());
 #endif
