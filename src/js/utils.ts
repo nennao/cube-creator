@@ -167,7 +167,7 @@ export function transformTriangle(triangle: TriVec3, transform: mat4): TriVec3 {
 export function subdivideIndexRows(
   row1: number[],
   row2: number[],
-  subdivisions: number,
+  subdivisions: number | number[],
   positions: V3[],
   splitEdges?: number[][]
 ): [V3[][], number[][], number[][][]] {
@@ -176,12 +176,12 @@ export function subdivideIndexRows(
   const newPositions = [];
   const newSplitEdges: number[][][] = [];
 
-  for (let i = 0; i < subdivisions; i++) {
-    newPositions.push(
-      zipped.map(([i1, i2]) =>
-        vec3ToV3(vec3.lerp(vec3.create(), positions[i1], positions[i2], (i + 1) / (subdivisions + 1)))
-      )
-    );
+  const subsArr = Array.isArray(subdivisions)
+    ? subdivisions
+    : Array.from({ length: subdivisions }, (_, i) => (i + 1) / (subdivisions + 1));
+
+  for (let i of subsArr) {
+    newPositions.push(zipped.map(([i1, i2]) => vec3ToV3(vec3.lerp(vec3.create(), positions[i1], positions[i2], i))));
     splitEdges && newSplitEdges.push(zipped.map(([i1, i2]) => arrayIntersect(splitEdges[i1], splitEdges[i2])));
   }
 

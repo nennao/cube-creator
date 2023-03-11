@@ -35,14 +35,24 @@ export const squareData = (side = 1, z = 0): [V3[], V3[]] => {
   return [vertices, indices];
 };
 
-function roundedSquarePositions(side: number, z: number, rPercent: number, noCenter = false): V3[] {
+function roundedSquarePositions(
+  side: number,
+  z: number,
+  rPercent: number,
+  noCenter = false,
+  subEdges?: number | number[]
+): V3[] {
   if (rPercent > 0.99) {
     rPercent = 1;
   }
+  if (rPercent < 0.01) {
+    rPercent = 0;
+  }
 
   const isCircle = rPercent == 1;
+  const isSquare = rPercent == 0;
 
-  const subdivisions = clamp(mR(rPercent * 20), 4, 16);
+  const subdivisions = isSquare ? 0 : clamp(mR(rPercent * 20), 4, 16);
   const s = side / 2;
   const r = rPercent * s;
   const R = isCircle ? 0 : s - r;
@@ -60,6 +70,8 @@ function roundedSquarePositions(side: number, z: number, rPercent: number, noCen
     ? [v, ...quadrantSubs()]
     : noCenter
     ? [v, ...quadrantSubs(), rotate90(v)]
+    : isSquare
+    ? [center]
     : [center, v, ...quadrantSubs(), rotate90(v)];
   const quadrant1 = quadrant0.map(rotate90);
   const quadrant2 = quadrant1.map(rotate90);
@@ -88,6 +100,15 @@ function roundedSquarePositions(side: number, z: number, rPercent: number, noCen
   cornerTranslate(quadrant2, corners[2]);
   cornerTranslate(quadrant3, corners[3]);
 
+  if (subEdges) {
+    [quadrant0, quadrant1, quadrant2, quadrant3].forEach((quadrant, i, quadrants) => {
+      const currLast = quadrant[quadrant.length - 1];
+      const nextFirst = quadrants[(i + 1) % 4][0];
+      const [newPositions] = subdivideIndexRows([0], [1], subEdges, [currLast, nextFirst]);
+      quadrant.push(...newPositions.flat());
+    });
+  }
+
   return [...quadrant0, ...quadrant1, ...quadrant2, ...quadrant3];
 }
 
@@ -97,83 +118,90 @@ export function extrudedRingData(
   rPercent: number,
   wPercent: number,
   extrude: number,
-  edgeR: number
-): [V3[], V3[], V3[]] {
+  edgeR: number,
+  bevelW: number
+): [V3[], V3[], V3[], number[]] {
   const eps = 0.001;
-  rPercent = edgeR < 0.01 ? rPercent : Math.max(0.02, rPercent);
 
-  const [positions, indices] = roundedRingData(side, z + Math.max(extrude, eps), rPercent, wPercent);
-
-  if (extrude <= eps) {
-    return [positions, indices, []];
-  }
-
-  if (edgeR >= 0.01) {
-    return roundedExtrudedRingData(indices, side, z, rPercent, wPercent, extrude, edgeR);
-  }
-
-  const ring = !(wPercent > 0.99);
-  const circle = rPercent > 0.99;
-  const square = rPercent < 0.01;
-
-  const posLen = positions.length;
-
-  // if not ring and not square then filter out center positions
-  const upperPos = positions
-    .filter((_, i) => ring || square || (circle ? i : i % (posLen / 4)))
-    .map((p): V3 => [p[0], p[1], p[2]]);
-  const lowerPos = upperPos.map((p): V3 => [p[0], p[1], z]);
-
-  const newPosLen = upperPos.length;
-  const ringLen = newPosLen / (ring ? 2 : 1);
-  const cutoff = ring ? posLen / 2 : 0;
-  const indexRange = (len: number, start = 0) => arrayRange(len, posLen + start);
-
-  const innerI = ring ? indexRingToTriangles(indexRange(ringLen, newPosLen), indexRange(ringLen)) : [];
-  const outerI = indexRingToTriangles(indexRange(ringLen, cutoff), indexRange(ringLen, newPosLen + cutoff));
-
-  const allPositions = [...positions, ...upperPos, ...lowerPos];
-  const allIndices = [...indices, ...innerI, ...outerI];
-
-  return square ? [...convertToFacePositions(allPositions, allIndices), []] : [allPositions, allIndices, []];
-}
-
-export function roundedExtrudedRingData(
-  faceIndices: V3[],
-  side: number,
-  z: number,
-  rPercent: number,
-  wPercent: number,
-  extrude: number,
-  edgeR: number
-): [V3[], V3[], V3[]] {
   if (wPercent < 0.01) {
     wPercent = 0.01;
   }
+  if (edgeR < 0.01) {
+    edgeR = 0;
+  }
   const ring = !(wPercent > 0.99);
+  const roundEdge = edgeR > 0;
+
+  const zEx = z + Math.max(eps, extrude);
+
+  const faceR = rPercent * 0.5;
+  const bevelW2 = (bevelW - faceR) / (1 - 2 * faceR);
+  const subs = bevelW - faceR < 0.01 ? undefined : bevelW < 0.5 ? [bevelW2, 1 - bevelW2] : 1;
 
   const innerSide = (1 - wPercent) * side;
 
   const maxR = Math.min(extrude, ring ? (side - innerSide) / 4 : side / 2);
   const r = edgeR * maxR;
 
-  const upperPosOuter0 = roundedSquarePositions(side - r * 2, z + extrude, rPercent, ring);
-  const upperPosInner0 = ring ? roundedSquarePositions(innerSide + r * 2, z + extrude, rPercent, true) : [];
+  let upperPosOuter0: V3[];
+  let upperPosInner0: V3[] = [];
+  let faceIndices: V3[];
+  let faceInfo: [number, number][];
+
+  if (ring) {
+    upperPosOuter0 = roundedSquarePositions(side - r * 2, zEx, rPercent, true, subs);
+    upperPosInner0 = roundedSquarePositions(innerSide + r * 2, zEx, rPercent, true, subs);
+    faceInfo = [
+      [upperPosInner0.length, innerSide + r * 2],
+      [upperPosOuter0.length, side - r * 2],
+    ];
+    const posLen = upperPosInner0.length;
+    faceIndices = indexRingToTriangles(arrayRange(posLen), arrayRange(posLen, posLen));
+  } else {
+    [upperPosOuter0, faceIndices] = roundedSquareData(side - r * 2, zEx, rPercent, subs);
+    faceInfo = [[upperPosOuter0.length, side - r * 2]];
+  }
+
+  if (extrude < 0.01) {
+    const faceInfoExpanded = faceInfo.map(([i, w]): number[] => Array(i).fill(w)).flat();
+    return [[...upperPosInner0, ...upperPosOuter0], faceIndices, [], faceInfoExpanded];
+  }
 
   const len0 = upperPosOuter0.length + upperPosInner0.length;
   let len = 0;
 
   const positions = [];
   const indices = [];
+  const info: [number, number][] = [];
 
-  for (let [iSide, dir, inner] of [
+  const vars = [
     [side, 1, 0],
     [innerSide, -1, 1],
-  ]) {
-    const upperPos = roundedSquarePositions(iSide, z + extrude, rPercent, true);
-    const lowerPos = upperPos.map((p): V3 => [p[0], p[1], z]);
+  ];
 
-    const upperPos1 = roundedSquarePositions(iSide - r * dir * 2, z + extrude, rPercent, true);
+  for (let [iSide, dir, inner] of vars) {
+    if (inner && !ring) {
+      positions.push([]);
+      indices.push([]);
+      continue;
+    }
+
+    const upperPos = roundedSquarePositions(iSide, zEx, rPercent, true, subs);
+    const lowerPos = upperPos.map((p): V3 => [p[0], p[1], z]);
+    len = upperPos.length;
+
+    const ar = arrayRange;
+
+    if (!roundEdge) {
+      const iF = indexRingToTriangles(ar(len, len0 + (0 + 3 * inner) * len), ar(len, len0 + (1 + 1 * inner) * len));
+      positions.push([...upperPos, ...lowerPos]);
+      indices.push(iF);
+      info.push([len, iSide], [len, iSide]);
+      continue;
+    }
+
+    const pos1s = iSide - r * dir * 2;
+    const upperPos1 = roundedSquarePositions(pos1s, zEx, rPercent, true, subs);
 
     const upperPos2 = upperPos.map((p, i) => {
       const cp: V3 = [upperPos1[i][0], upperPos1[i][1], upperPos1[i][2] - r];
@@ -181,9 +209,6 @@ export function roundedExtrudedRingData(
     });
 
     const upperPos3 = upperPos.map((p): V3 => [p[0], p[1], p[2] - r]);
-    len = upperPos.length;
-
-    const ar = arrayRange;
 
     const i1 = indexRingToTriangles(ar(len, len0 + (0 + 5 * inner) * len), ar(len, len0 + (1 + 3 * inner) * len));
     const i2 = indexRingToTriangles(ar(len, len0 + (1 + 5 * inner) * len), ar(len, len0 + (2 + 3 * inner) * len));
@@ -191,19 +216,27 @@ export function roundedExtrudedRingData(
 
     positions.push([...upperPos1, ...upperPos2, ...upperPos3, ...lowerPos]);
     indices.push([...i1, ...i2, ...iF]);
+    info.push([len, pos1s], [len, 2 * upperPos2[0][0]], [len, iSide], [len, iSide]);
   }
   const allPositions = [...upperPosInner0, ...upperPosOuter0, ...positions[0], ...positions[1]];
   const allIndices = [...faceIndices, ...indices[0], ...indices[1]];
+  const allInfo = [...faceInfo, ...info];
 
   const normalsOverride: V3[] = [];
-  for (let i = 0; i < len; i++) {
-    const j = len0 + 0 * len + i;
-    const k = len0 + 4 * len + i;
-    normalsOverride[j] = [0, 0, 1];
-    normalsOverride[k] = [0, 0, 1];
+  if (roundEdge) {
+    for (let i = 0; i < len; i++) {
+      const j = len0 + 0 * len + i;
+      normalsOverride[j] = [0, 0, 1];
+      if (ring) {
+        const k = len0 + 4 * len + i;
+        normalsOverride[k] = [0, 0, 1];
+      }
+    }
   }
-  // return [...convertToFacePositions(allPositions, allIndices), []];
-  return [allPositions, allIndices, normalsOverride];
+  const allInfoExpanded = allInfo.map(([i, w]): number[] => Array(i).fill(w)).flat();
+
+  // return [...convertToFacePositions(allPositions, allIndices), [], allInfoExpanded];
+  return [allPositions, allIndices, normalsOverride, allInfoExpanded];
 }
 
 export function roundedRingData(side: number, z: number, rPercent: number, wPercent: number): [V3[], V3[]] {
@@ -224,15 +257,16 @@ export function roundedRingData(side: number, z: number, rPercent: number, wPerc
   return [[...posInner, ...posOuter], indexRingToTriangles(arrayRange(posLen), arrayRange(posLen, posLen))];
 }
 
-export function roundedSquareData(side = 1, z = 0, rPercent = 0.25): [V3[], V3[]] {
-  if (rPercent < 0.01) {
-    return squareData(side, z);
-  }
+export function roundedSquareData(side = 1, z = 0, rPercent = 0.25, subs?: number | number[]): [V3[], V3[]] {
   if (rPercent > 0.99) {
     rPercent = 1;
   }
+  if (rPercent < 0.01) {
+    rPercent = 0;
+  }
 
   const isCircle = rPercent == 1;
+  const isSquare = rPercent == 0;
 
   const allPositions = roundedSquarePositions(side, z, rPercent);
 
@@ -253,22 +287,74 @@ export function roundedSquareData(side = 1, z = 0, rPercent = 0.25): [V3[], V3[]
     return [nextBatch[0], nextBatch[1]];
   };
 
+  const edges: number[][] = [];
+
   indicesBatches.forEach((indicesBatch, i) => {
-    allIndices.push(...indexSectorToTriangles(indicesBatch));
+    if (isSquare) {
+      if (subs) {
+        const [curr, next] = [indicesBatch[0], nextBatchPoints(i)[0]];
+        const [newPositions, newPoints] = subdivideIndexRows([next], [curr], subs, allPositions);
+        allPositions.push(...newPositions.flat());
+        edges.push([next, ...newPoints.flat(), curr]);
+      }
+    } else {
+      allIndices.push(...indexSectorToTriangles(indicesBatch));
 
-    const [curr0, currLast] = [indicesBatch[0], indicesBatch[indicesBatch.length - 1]];
-    const [next0, next1] = nextBatchPoints(i);
+      const [curr0, currLast] = [indicesBatch[0], indicesBatch[indicesBatch.length - 1]];
+      const [next0, next1] = nextBatchPoints(i);
 
-    const row1 = [next1, currLast];
-    const row2 = [next0, curr0];
-    allIndices.push(...indexRowsToTriangles(row1, row2));
+      let newPoints0: number[][] = [];
+      let newPoints1: number[][] = [];
+
+      if (subs) {
+        const [extraPositions0, midEdgePoints0] = subdivideIndexRows([next0], [curr0], subs, allPositions);
+        allPositions.push(...extraPositions0.flat());
+        newPoints0 = midEdgePoints0;
+        const [extraPositions1, midEdgePoints1] = subdivideIndexRows([next1], [currLast], subs, allPositions);
+        allPositions.push(...extraPositions1.flat());
+        newPoints1 = midEdgePoints1;
+      }
+
+      const row1 = [next1, ...newPoints1.flat(), currLast];
+      const row2 = [next0, ...newPoints0.flat(), curr0];
+      allIndices.push(...indexRowsToTriangles(row1, row2));
+      edges.push(row2);
+    }
   });
 
-  allIndices.push(
-    ...indexRowsToTriangles([indicesBatches[1][0], indicesBatches[0][0]], [indicesBatches[2][0], indicesBatches[3][0]])
-  );
+  if (subs) {
+    allIndices.push(
+      ...subdivideInnerFace([edges[0], [...edges[1]].reverse(), [...edges[2]].reverse(), edges[3]], allPositions, subs)
+    );
+  } else {
+    allIndices.push(
+      ...indexRowsToTriangles(
+        [indicesBatches[1][0], indicesBatches[0][0]],
+        [indicesBatches[2][0], indicesBatches[3][0]]
+      )
+    );
+  }
 
   return [allPositions, allIndices];
+}
+
+function subdivideInnerFace(face: number[][], positions: V3[], subs: number | number[]): V3[] {
+  const face0b = face[0].slice(1, face[0].length - 1);
+  const face2b = face[2].slice(1, face[2].length - 1);
+  const [extraPositions, midEdgePoints] = subdivideIndexRows(face0b, face2b, subs, positions);
+
+  positions.push(...extraPositions.flat());
+
+  const triangles: V3[] = [];
+  const midRows = midEdgePoints.map((points, i) => [face[1][i + 1], ...points, face[3][i + 1]]);
+
+  const pointsList = [face[0], ...midRows, face[2]];
+  pointsList.forEach((_, i) => {
+    if (i) {
+      triangles.push(...indexRowsToTriangles(pointsList[i - 1], pointsList[i]));
+    }
+  });
+  return triangles;
 }
 
 // prettier-ignore
@@ -317,7 +403,7 @@ const _addTransformedSplitEdges = (edges: number[]) => {
   return [top, bot, top1, bot1, top2, bot2, top3, bot3].map((comps) => comps.map(edgeSplitComponentsToId));
 };
 
-export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[], number[][]] {
+export function roundedCubeData(side = 1, rPercent = 0.25, bevelW: number): [V3[], V3[], number[][]] {
   if (rPercent < 0.01) {
     rPercent = 0;
   }
@@ -544,7 +630,15 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[], number[
   const sides: number[][] = [];
   const faces: [number[][], number[][], number[][], number[][], number[][], number[][]] = [[], [], [], [], [], []];
 
-  const subs = rounded ? Math.floor(0.001 + ((1 - rPercent) * 10) / 2) * 2 + 1 : 1;
+  const subN = rounded ? Math.floor(0.001 + ((1 - rPercent) * 10) / 2) * 2 + 1 : bevelW > 0 ? 9 : 3;
+  const subs = Array.from({ length: subN }, (_, i) => (i + 1) / (subN + 1));
+
+  if (bevelW - r > 0.01 && bevelW < 0.5) {
+    const w = (bevelW - r) / (1 - 2 * r);
+    const i = Math.max(1, Math.min(Math.floor(subN / 2), mR(w * (subN + 1)))) - 1;
+    subs[i] = w;
+    subs[subN - 1 - i] = 1 - w;
+  }
 
   for (let turn of [0, 1, 2, 3]) {
     const prevTurn = turn ? turn - 1 : 3;
@@ -618,7 +712,7 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[], number[
         allPositions.push(...extraPositions.flat());
         allSplitEdges.push(...extraSplitEdges.flat());
 
-        face.push([i0, midEdgePoints[0][0], i1]);
+        face.push([i0, ...midEdgePoints.flat(), i1]);
       });
       faces2.push(face);
     }
@@ -629,7 +723,7 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[], number[
     const face0b = face[0].slice(1, face[0].length - 1);
     const face2b = face[2].slice(1, face[2].length - 1);
     const [extraPositions, midEdgePoints] = subdivideIndexRows(face0b, face2b, subs, allPositions);
-    const newSplitEdges = getFlatFaceSplitEdges(face[0], face[1], face[2], face[3], midEdgePoints, allSplitEdges, subs);
+    const newSplitEdges = getFlatFaceSplitEdges(face[0], face[1], face[2], face[3], midEdgePoints, allSplitEdges, subN);
 
     allPositions.push(...extraPositions.flat());
     allSplitEdges.push(...newSplitEdges.flat());
@@ -646,7 +740,7 @@ export function roundedCubeData(side = 1, rPercent = 0.25): [V3[], V3[], number[
 
   allIndices.push(...flat);
 
-  // return convertToFacePositions(allPositions, allIndices);
+  // return [...convertToFacePositions(allPositions, allIndices), allSplitEdges];
   return [allPositions, allIndices, allSplitEdges];
 }
 
@@ -789,4 +883,80 @@ export function splitCubeFaceData(positions: V3[], indices: V3[], splitEdges: nu
   });
 
   return [newPositions, newIndices];
+}
+
+function _bevelActions(blockPos: V3) {
+  return [
+    [0, 1, 2, 1],
+    [2, 0, 1, 1],
+    [2, 1, 0, -1],
+  ]
+    .map(([x, y, z, a]): [boolean, number, number, number][] => [
+      [!!blockPos[z] && blockPos[x] < 1 && blockPos[y] < 1, y, z, a * 45],
+      [!!blockPos[z] && blockPos[x] < 1 && blockPos[y] > -1, y, z, a * (45 + 90)],
+      [!!blockPos[z] && blockPos[x] > -1 && blockPos[y] > -1, y, z, a * (45 + 180)],
+      [!!blockPos[z] && blockPos[x] > -1 && blockPos[y] < 1, y, z, a * (45 + 270)],
+    ])
+    .flat();
+}
+
+export function addBevel(bevelW: number, blockR: number, blockPos: V3, positions: V3[]) {
+  if (bevelW < 0.01) return positions;
+  if (!(blockPos[0] || blockPos[1] || blockPos[2])) return positions;
+
+  const s = 0.5; //block s
+  const bR = Math.min(blockR, 0.5) * s; //block R
+
+  const diag = Math.sqrt(2) / 2;
+  const h = diag - Math.sqrt((bevelW * bevelW) / 2); // target block height
+
+  const actions = _bevelActions(blockPos);
+
+  return positions.map((p): V3 => {
+    const res = vec3.fromValues(...p);
+    for (let [condition, iY, iZ, th] of actions) {
+      if (condition) {
+        const rotate = [vec3.rotateX, vec3.rotateY, vec3.rotateZ][iZ];
+        rotate(res, res, [0, 0, 0], rad(th));
+
+        const t = Math.min(1, (p[iZ] * Math.sign(blockPos[iZ]) + 0.5) / bevelW);
+        const hh = diag + t * (h - diag);
+
+        const q: V3 = [res[0], res[1], res[2]];
+        q[iY] = Math.min(res[iY], hh);
+
+        const [y, z] = [q[iY] - h + bR, q[iZ] * Math.sign(blockPos[iZ]) - s + bR];
+        if (y > 0 && z > 0) {
+          q[iY] = Math.min(y, Math.sqrt(bR * bR - z * z)) + h - bR;
+        }
+        rotate(res, q, [0, 0, 0], rad(-th));
+      }
+    }
+    return vec3ToV3(res);
+  });
+}
+
+export function addFaceBevel(bevelW: number, blockPos: V3, positions: V3[], info: number[]) {
+  if (bevelW < 0.01) return positions;
+
+  const diag = Math.sqrt(2) / 2;
+  const h = diag - Math.sqrt((bevelW * bevelW) / 2); // target block height
+
+  const actions = _bevelActions(blockPos);
+
+  return positions.map((p, i): V3 => {
+    const res = vec3.fromValues(...p);
+    for (let [condition, iY, iZ, th] of actions) {
+      if (condition) {
+        const rotate = [vec3.rotateX, vec3.rotateY, vec3.rotateZ][iZ];
+        rotate(res, res, [0, 0, 0], rad(th));
+
+        const q: V3 = [res[0], res[1], res[2]];
+        q[iY] = Math.min(res[iY], h * (info[i] ?? 1));
+
+        rotate(res, q, [0, 0, 0], rad(-th));
+      }
+    }
+    return vec3ToV3(res);
+  });
 }

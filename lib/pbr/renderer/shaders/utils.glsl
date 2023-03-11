@@ -1,4 +1,5 @@
 uniform float u_EnvIntensity;
+uniform float u_BevelW;
 
 const float BLOCK_R = 0.5;
 
@@ -249,6 +250,10 @@ float blockOcclusion(
     float spread = spreadRaw - 1.0;
     float spread2 = spread * 0.5;
 
+    float outerBound = BLOCK_R + spreadRaw;
+    float innerBound = BLOCK_R + spread2;
+
+
     float r = blockR * BLOCK_R;
     float w = 2.0 * r + spread;
     float blockTop = r * (1.0 - r/w);
@@ -256,7 +261,6 @@ float blockOcclusion(
     vec3 pos0 = invMat * fragPosition;
     vec3 pos = abs(rotating && int(origPosAdj.x) == level ? rotate(pos0, -currAngle, axis) : pos0);
 
-    float innerBound = BLOCK_R + spread2;
     float lightStrength = 1.6 * envIntensityAdjusted(), lightTravel = 1.2;
     //    float lightStrength = u_AOLightS * envIntensityAdjusted(), lightTravel = u_AOLightT;
 
@@ -269,25 +273,38 @@ float blockOcclusion(
 
     float poleR = (sqrt(2.0)-1.0) * r;
     float poleA = (4.0-PI) * r*r;
-    float polesStrength = poleA * lightStrength * 1.5;
-    float polesTravel = polesStrength * lightTravel * 1.5;
+    float bevelA = length(vec2(u_BevelW)) * length(vec2(u_BevelW));
+    vec3 bevelDist = (pos - innerBound)/u_BevelW;
+    vec3 poleAB = vec3(
+        max(poleA, bevelA * min(1.0, bevelDist.x)),
+        max(poleA, bevelA * min(1.0, bevelDist.y)),
+        max(poleA, bevelA * min(1.0, bevelDist.z))
+    );
+    vec3 polesStrength = poleAB * lightStrength * 1.5;
+    vec3 polesTravel = polesStrength * lightTravel * 1.5;
 
     vec3 polesDist = min(
-    max(
-    vec3(
-    length(pos - vec3(pos.x, innerBound, innerBound)),
-    length(pos - vec3(innerBound, pos.y, innerBound)),
-    length(pos - vec3(innerBound, innerBound, pos.z))
-    ) - length(vec2(poleR + spread2)),
-    0.0
-    ),
-    polesTravel
+        max(
+            vec3(
+                length(pos - vec3(pos.x, innerBound, innerBound)),
+                length(pos - vec3(innerBound, pos.y, innerBound)),
+                length(pos - vec3(innerBound, innerBound, pos.z))
+            ) - length(vec2(poleR + spread2)),
+            0.0
+        ),
+        polesTravel
     );
-    float polesLight = polesTravel <= 0.0 ? 0.0 : length(polesStrength * (polesTravel - polesDist) / polesTravel);
+    vec3 polesLightV = vec3(
+        polesTravel.x <= 0.0 ? 0.0 : polesStrength.x * (polesTravel.x - polesDist.x) / polesTravel.x,
+        polesTravel.y <= 0.0 ? 0.0 : polesStrength.y * (polesTravel.y - polesDist.y) / polesTravel.y,
+        polesTravel.z <= 0.0 ? 0.0 : polesStrength.z * (polesTravel.z - polesDist.z) / polesTravel.z
+    );
+    float polesLight = length(polesLightV);
 
 
-    float outerBound = spreadRaw + BLOCK_R;
-    float outerTravel = (spread + sqrt(poleA)) * lightStrength * lightTravel;
+    float planePoleTravel = (spread + sqrt(poleA)) * lightStrength * lightTravel;
+    float bevelTravel = u_BevelW * lightStrength * lightTravel;
+    float outerTravel = max(planePoleTravel, bevelTravel);
     vec3 outerDist = min(max(outerBound - blockTop - abs(pos0), 0.0), outerTravel);
     vec3 outerV = ((outerTravel - outerDist) / outerTravel);
 

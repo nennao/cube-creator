@@ -2,7 +2,15 @@ import { mat3, mat4, vec2, vec3 } from "gl-matrix";
 
 import { Camera } from "./camera";
 import { Geometry } from "./geometry";
-import { cubeData, extrudedRingData, roundedCubeData, splitCubeFaceData, squareData } from "./shapes";
+import {
+  addBevel,
+  addFaceBevel,
+  cubeData,
+  extrudedRingData,
+  roundedCubeData,
+  splitCubeFaceData,
+  squareData,
+} from "./shapes";
 import * as utils from "./utils";
 import { acosC, clamp, deg, max, min, mR, rad, randInt, vec3ToV3, ShallowNormalsInfo, TriVec3, V3 } from "./utils";
 import { Scene } from "./scene";
@@ -187,12 +195,14 @@ class Face {
   initGeo() {
     const { root, axis, side, faceId } = this;
     const { faceColor, faceColorCustom6 } = root.config;
-    const [v, i, n] = this.root.faceGeoData;
-    const vertices = orientFace(v, axis, side);
+    const [v, i, n, info] = this.root.faceGeoData;
+    const vertices0 = orientFace(v, axis, side);
     const normals = orientFace(n, axis, side);
 
+    const vertices = addFaceBevel(this.root.bevelW, this.block.origPosition, vertices0, info);
+
     // const colors3: V3[] = Array.from({ length: vertices.length }, () => [Math.random(), Math.random(), Math.random()]);
-    // const colors4: V3[] = Array.from({ length: vertices.length / 3 }, () => {
+    // const colors4: V3[] = Array.from({ length: 1 + vertices.length / 3 }, () => {
     //   const col: V3 = [Math.random(), Math.random(), Math.random()];
     //   return [col, col, col];
     // }).flat();
@@ -229,7 +239,7 @@ class Block {
   private readonly root: Rubik;
   faces: Face[];
   position: vec3;
-  private readonly origPosition: vec3;
+  readonly origPosition: V3;
   private _boundingBox: TriVec3[] = [];
 
   private readonly faceRotation = mat3.create();
@@ -261,27 +271,27 @@ class Block {
     const { blockType, blockColor2, blockColorCustom6 } = this.root.config;
     const stickerless = blockType == "stickerless";
 
-    let faces = vec3ToV3(this.origPosition)
-      .map((p, i) => (p < 0 ? i + 3 : i))
-      .filter((_, i) => this.origPosition[i]);
+    const pos = this.origPosition;
+
+    let faces = pos.map((p, i) => (p < 0 ? i + 3 : i)).filter((_, i) => pos[i]);
 
     if (!faces.length) {
       faces = [0, 1, 2, 3, 4, 5];
     }
 
-    const [v, i] = stickerless ? splitCubeFaceData(...this.root.blockGeoData, faces) : this.root.blockGeoData;
-    // const [v, i] = splitCubeFaceData(...this.root.blockGeoData, faces);
+    const [v0, i] = stickerless ? splitCubeFaceData(...this.root.blockGeoData, faces) : this.root.blockGeoData;
+
+    const v = addBevel(this.root.bevelW, this.root.blockR, pos, v0);
 
     const vCount = v.length;
     // const triCount = vCount / 3;
 
     // const colors2: V3[] = Array(vCount).fill([1, 1, 1]);
     // const colors3: V3[] = Array.from({ length: vCount }, () => [Math.random(), Math.random(), Math.random()]);
-    // const colors4: V3[] = Array.from({ length: triCount }, () => {
+    // const colors4: V3[] = Array.from({ length: triCount + 1 }, () => {
     //   const col: V3 = [Math.random(), Math.random(), Math.random()];
     //   return [col, col, col];
     // }).flat();
-    //
 
     const colors0: () => V3[] = () => Array(vCount).fill([1, 1, 1]);
     const colors1: () => V3[] = () =>
@@ -445,7 +455,7 @@ export class Rubik {
   private showBounding = false;
 
   _blockGeoData: [V3[], V3[], number[][]] = [[], [], []];
-  _faceGeoData: [V3[], V3[], V3[]] = [[], [], []];
+  _faceGeoData: [V3[], V3[], V3[], number[]] = [[], [], [], []];
 
   private boundingBox: [Axis, Side, TriVec3[]][] | undefined;
   private bounds: FaceBounds[] | undefined;
@@ -461,6 +471,7 @@ export class Rubik {
 
   _spread = 1.025;
   blockR = 0.15;
+  bevelW = 0;
   faceCover = 0.85;
   faceR = 0.15;
   faceEdgeR = 0.5;
@@ -531,7 +542,7 @@ export class Rubik {
   }
 
   private updateBlockGeo() {
-    this._blockGeoData = roundedCubeData(1, this.blockR);
+    this._blockGeoData = roundedCubeData(1, this.blockR, this.bevelW);
   }
 
   get blockGeoData(): [V3[], V3[], number[][]] {
@@ -540,13 +551,13 @@ export class Rubik {
   }
 
   private updateFaceGeo() {
-    const { faceCoverAdj, faceR, faceRingW, faceExtrude, faceEdgeR } = this;
-    this._faceGeoData = extrudedRingData(faceCoverAdj, 0.5, faceR, faceRingW, faceExtrude, faceEdgeR);
+    const { faceCoverAdj, faceR, faceRingW, faceExtrude, faceEdgeR, bevelW } = this;
+    this._faceGeoData = extrudedRingData(faceCoverAdj, 0.5, faceR, faceRingW, faceExtrude, faceEdgeR, bevelW);
   }
 
-  get faceGeoData(): [V3[], V3[], V3[]] {
-    const [v, i, n] = this._faceGeoData;
-    return [[...v], [...i], n.map((v) => v)];
+  get faceGeoData(): [V3[], V3[], V3[], number[]] {
+    const [v, i, n, info] = this._faceGeoData;
+    return [[...v], [...i], n.map((v) => v), [...info]];
   }
 
   private createBlocks() {
@@ -592,6 +603,8 @@ export class Rubik {
     for (let id of ["blockRays", "blockAO", "showBounding"] as const) {
       const handler = utils.targetListener((t) => {
         this[id] = t.checked;
+        this.updateBlockGeo();
+        this.updateGeo(true, false);
         this.triggerRedraw();
       });
       utils.handleInputById(id, this[id], "onclick", handler);
@@ -614,13 +627,12 @@ export class Rubik {
     utils.handleInputById("spreadRange", this._spread.toString(), "onchange", spreadHandler);
     updateDOMVal("spreadTxt", this._spread);
 
-    for (let id of ["blockR", "faceCover", "faceR", "faceEdgeR", "faceRingW", "faceExtrude"] as const) {
+    for (let id of ["blockR", "bevelW", "faceCover", "faceR", "faceEdgeR", "faceRingW", "faceExtrude"] as const) {
       const handler = utils.targetListener((t) => {
-        const prevCover = this.faceCoverAdj;
         this[id] = +t.value;
-        id == "blockR" && this.updateBlockGeo();
-        (id != "blockR" || this.faceCoverAdj != prevCover) && this.updateFaceGeo();
-        this.updateGeo(id == "blockR", id != "blockR" || this.faceCoverAdj != prevCover);
+        (id == "blockR" || id == "bevelW") && this.updateBlockGeo();
+        this.updateFaceGeo();
+        this.updateGeo(id == "blockR" || id == "bevelW", true);
         this.triggerRedraw();
         updateDOMVal(`${id}Txt`, this[id]);
       });
@@ -1161,6 +1173,7 @@ export class Rubik {
   private setUniforms() {
     const { currAngle, axis, level, dir } = this.getCurrentSliceMoveDetails();
     this.shader.setUniform("u_BlockR", this.blockR);
+    this.shader.setUniform("u_BevelW", this.bevelW);
     this.shader.setUniform("u_Spread", this.spread);
     this.shader.setUniform("u_CurrAngle", rad(currAngle) * dir);
     this.shader.setUniform("u_Axis", ["x", "y", "z"].indexOf(axis));
