@@ -1,5 +1,6 @@
 import { mat3, mat4, vec2, vec3 } from "gl-matrix";
 
+import { initSolver, solve } from "./asyncSolver";
 import { Camera } from "./camera";
 import { Geometry } from "./geometry";
 import { faceDefaults, Preset, presetDefault, PRESETS } from "./presets";
@@ -236,6 +237,7 @@ type RotQueueItem = {
   elapsedA: number;
   elapsedT: number;
   turns: number;
+  finalTurns: number;
   reverse?: boolean;
 };
 
@@ -336,7 +338,7 @@ class Block {
   readonly origPosition: V3;
   private _boundingBox: TriVec3[] = [];
 
-  private readonly faceRotation = mat3.create();
+  readonly faceRotation = mat3.create();
   private readonly _geometry: Geometry;
 
   get boundingBox(): TriVec3[] {
@@ -562,6 +564,8 @@ export class Rubik {
   private readonly camera: Camera;
 
   private readonly speed = 2; // turns/s
+  private readonly solvingSpeed = 3; // turns/s
+  private readonly scramblingSpeed = 4; // turns/s
   private rotationQueue: RotQueueItem[] = [];
 
   transform = mat4.create();
@@ -571,6 +575,7 @@ export class Rubik {
   private readonly animAlpha = 2.25;
   private blocks: Block[];
 
+  private solving = false;
   private scrambling = false;
   private showBounding = false;
 
@@ -665,6 +670,8 @@ export class Rubik {
     this.initialPosition();
 
     this.loadConfigFromPreset();
+
+    initSolver();
   }
 
   private updateBlockGeo() {
@@ -857,6 +864,7 @@ export class Rubik {
       utils.handleInputById(id, this[id], "onclick", handler);
     }
 
+    utils.handleButtonById("solve", "onclick", () => this.solve());
     utils.handleButtonById("scramble", "onclick", () => this.scramble());
     utils.handleButtonById("reset", "onclick", () => this.reset());
 
@@ -1073,8 +1081,8 @@ export class Rubik {
     this.scene.triggerRedraw();
   }
 
-  private queueRotation(axis: Axis, level: Level, dir: Dir) {
-    this.rotationQueue.push({ axis, level, dir, elapsedA: 0, elapsedT: 0, turns: 1 });
+  private queueRotation(axis: Axis, level: Level, dir: Dir, turns: number) {
+    this.rotationQueue.push({ axis, level, dir, elapsedA: 0, elapsedT: 0, turns, finalTurns: turns });
   }
 
   private rotate(angle: number, rotAxis: vec3) {
@@ -1089,18 +1097,47 @@ export class Rubik {
     this.rotate(dx, [0, 1, 0]);
   }
 
+  private facesToFacelet() {
+    const faceletArr: string[] = [];
+
+    for (let block of this.blocks) {
+      const [x, y, z] = block.position;
+      for (let face of block.faces) {
+        const worldAS = vec3.transformMat3(vec3.create(), getAxisVector(face.axis, face.side), block.faceRotation);
+        const [axis, side] = getAxisAndSide(worldAS);
+        const idMultiply = [Axis.y, Axis.x, Axis.z].indexOf(axis) + (side < 0 ? 3 : 0);
+        const a = [x, -z, x, x, z, -x][idMultiply];
+        const b = [z, -y, -y, -z, -y, -y][idMultiply];
+        const id = idMultiply * 9 + (a + 1 + 3 * (b + 1));
+        faceletArr[id] = face.faceId;
+      }
+    }
+    return faceletArr.join("");
+  }
+
+  private solve() {
+    if (this.rotating) return;
+    this.solving = true;
+    const facelet = this.facesToFacelet();
+
+    solve(facelet).then((res) => {
+      const axes = { x: Axis.x, y: Axis.y, z: Axis.z };
+      res.forEach(([axis, level, dir, turns]) => this.queueRotation(axes[axis], level, dir, turns));
+    });
+  }
+
   private scramble() {
     this.scrambling = true;
 
-    const levels = [Level.m1, Level.z0, Level.p1];
+    const levels = [Level.m1, Level.p1];
     const dirs = [Dir.ccw, Dir.cw];
     const randAxes = utils.shuffle([Axis.x, Axis.y, Axis.z]);
 
     for (let _ of Array(randInt(3) + 3)) {
       for (let axis of randAxes) {
-        const level = levels[randInt(3)];
+        const level = levels[randInt(2)];
         const dir = dirs[randInt(2)];
-        this.queueRotation(axis, level, dir);
+        this.queueRotation(axis, level, dir, 1);
       }
     }
   }
@@ -1130,15 +1167,16 @@ export class Rubik {
 
   private runRotation(dt: number) {
     if (this.rotationQueue.length) {
-      const { axis, level, dir, elapsedA, elapsedT, turns, reverse } = this.rotationQueue[0];
-      const fullT = (this.scrambling ? 0.5 : 1) / this.speed;
+      const { axis, level, dir, elapsedA, elapsedT, turns, finalTurns, reverse } = this.rotationQueue[0];
+      const fullT = turns / (this.scrambling ? this.scramblingSpeed : this.solving ? this.solvingSpeed : this.speed);
       const t = elapsedT + dt;
-      const a = clamp(utils.easeInOut(t, fullT, 90, this.animAlpha), 0, 90) + (elapsedA > 90 ? 90 : 0);
+      const maxA = turns * 90;
+      const a = clamp(utils.easeInOut(t, fullT, maxA, this.animAlpha), 0, maxA) + (elapsedA > maxA ? maxA : 0);
       const targetA = Math.max(a, elapsedA);
       const amt = (reverse ? -1 : 1) * Math.max(0, targetA - elapsedA);
       const isFinal = t >= fullT;
 
-      this.rotateSlice(axis, level, dir, amt, isFinal, turns);
+      this.rotateSlice(axis, level, dir, amt, isFinal, finalTurns);
 
       if (isFinal) {
         this.rotationQueue.shift();
@@ -1149,6 +1187,9 @@ export class Rubik {
 
       if (!this.rotationQueue.length && this.scrambling) {
         this.scrambling = false;
+      }
+      if (!this.rotationQueue.length && this.solving) {
+        this.solving = false;
       }
       this.triggerRedraw();
     }
@@ -1243,7 +1284,7 @@ export class Rubik {
   }
 
   private handleClickedBlock(clickedBlockInfo: [Axis, Side, Block, vec3]) {
-    if (!this.rotationQueue.length) {
+    if (!this.rotating) {
       const [axis, side, block, p] = clickedBlockInfo;
       const normal = this.displayTransform(getAxisVector(axis, side));
       const center = vec3.scale(vec3.create(), normal, this.cubeR);
@@ -1427,9 +1468,9 @@ export class Rubik {
 
       const elapsedT = utils.easeInOut(remElapsedA, 90, 1 / this.speed, 1 / this.animAlpha);
       const elapsedA = remElapsedA + (currAngle > 90 ? 90 : 0);
-      const turns = mR(currAngle / 90);
+      const finalTurns = mR(currAngle / 90);
 
-      this.rotationQueue.push({ axis, level, dir, elapsedA, elapsedT, turns, reverse });
+      this.rotationQueue.push({ axis, level, dir, elapsedA, elapsedT, turns: 1, finalTurns, reverse });
 
       this.triggerRedraw();
     }
