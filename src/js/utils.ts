@@ -20,6 +20,11 @@ export function randInt(x: number) {
   return Math.floor(Math.random() * x);
 }
 
+export function randExp(lambda: number) {
+  const xScale = 1 / (1 - Math.exp(-lambda));
+  return Math.log(1 - Math.random() / xScale) / -lambda;
+}
+
 export function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }

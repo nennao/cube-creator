@@ -32,6 +32,14 @@
 
       <div id="sideMenu" class="hidden">
         <div>
+          <label for="presetsSelect">presets</label>
+          <select id="presetsSelect"></select>
+        </div>
+        <div>
+          <button id="randomizer">randomize</button>
+          <input id="saveName" style="width: 75px" /><button id="save">save</button>
+        </div>
+        <div>
           block type<br />
           <input id="blockTypeRadio_stickered" value="blockTypeRadio_stickered" type="radio" name="blockTypeRadio" />
           <label for="blockTypeRadio_stickered">stickered</label>
@@ -66,6 +74,10 @@
             <label for="blockColorRadio_classic">classic</label>
             <input id="blockColorRadio_bright" value="blockColorRadio_bright" type="radio" name="blockColorRadio2" />
             <label for="blockColorRadio_bright">bright</label><br />
+            <input id="blockColorRadio_neutral" value="blockColorRadio_neutral" type="radio" name="blockColorRadio2" />
+            <label for="blockColorRadio_neutral">neutral</label>
+            <input id="blockColorRadio_pastel" value="blockColorRadio_pastel" type="radio" name="blockColorRadio2" />
+            <label for="blockColorRadio_pastel">pastel</label><br />
             <input id="blockColorRadio_custom6" value="blockColorRadio_custom6" type="radio" name="blockColorRadio2" />
             <label for="blockColorRadio_custom6">custom</label><br />
             <div id="blockColorInputs6" class="hidden"></div>
@@ -81,13 +93,17 @@
         </div>
 
         <div><input type="checkbox" id="addStickersCheck" /><label for="addStickersCheck">add stickers</label></div>
-        <div id="faceStickerOptions" class="hidden">
+        <div id="faceStickerOptions">
           stickers color
           <div>
             <input id="faceColorRadio_classic" value="faceColorRadio_classic" type="radio" name="faceColorRadio" />
             <label for="faceColorRadio_classic">classic</label>
             <input id="faceColorRadio_bright" value="faceColorRadio_bright" type="radio" name="faceColorRadio" />
             <label for="faceColorRadio_bright">bright</label><br />
+            <input id="faceColorRadio_neutral" value="faceColorRadio_neutral" type="radio" name="faceColorRadio" />
+            <label for="faceColorRadio_neutral">neutral</label>
+            <input id="faceColorRadio_pastel" value="faceColorRadio_pastel" type="radio" name="faceColorRadio" />
+            <label for="faceColorRadio_pastel">pastel</label><br />
             <input id="faceColorRadio_custom6" value="faceColorRadio_custom6" type="radio" name="faceColorRadio" />
             <label for="faceColorRadio_custom6">custom</label><br />
             <div id="faceColorInputs6" class="hidden"></div>
@@ -132,30 +148,32 @@
           <input id="bevelWRange" type="range" min="0" max="0.5" step="0.01" />
           <div id="bevelWTxt"></div>
         </div>
-        <div>
-          <label for="faceCoverRange">face coverage</label>
-          <input id="faceCoverRange" type="range" min="0" max="1" step="0.05" />
-          <div id="faceCoverTxt"></div>
-        </div>
-        <div>
-          <label for="faceRRange">face roundness</label>
-          <input id="faceRRange" type="range" min="0" max="1" step="0.05" />
-          <div id="faceRTxt"></div>
-        </div>
-        <div>
-          <label for="faceEdgeRRange">face edge roundness</label>
-          <input id="faceEdgeRRange" type="range" min="0" max="1" step="0.05" />
-          <div id="faceEdgeRTxt"></div>
-        </div>
-        <div>
-          <label for="faceRingWRange">face ring thickness</label>
-          <input id="faceRingWRange" type="range" min="0" max="1" step="0.05" />
-          <div id="faceRingWTxt"></div>
-        </div>
-        <div>
-          <label for="faceExtrudeRange">face extrusion</label>
-          <input id="faceExtrudeRange" type="range" min="0" max="0.1" step="0.005" />
-          <div id="faceExtrudeTxt"></div>
+        <div id="faceStickerOptions2">
+          <div>
+            <label for="faceCoverRange">face coverage</label>
+            <input id="faceCoverRange" type="range" min="0" max="1" step="0.05" />
+            <div id="faceCoverTxt"></div>
+          </div>
+          <div>
+            <label for="faceRRange">face roundness</label>
+            <input id="faceRRange" type="range" min="0" max="1" step="0.05" />
+            <div id="faceRTxt"></div>
+          </div>
+          <div>
+            <label for="faceEdgeRRange">face edge roundness</label>
+            <input id="faceEdgeRRange" type="range" min="0" max="1" step="0.05" />
+            <div id="faceEdgeRTxt"></div>
+          </div>
+          <div>
+            <label for="faceRingWRange">face ring thickness</label>
+            <input id="faceRingWRange" type="range" min="0" max="1" step="0.05" />
+            <div id="faceRingWTxt"></div>
+          </div>
+          <div>
+            <label for="faceExtrudeRange">face extrusion</label>
+            <input id="faceExtrudeRange" type="range" min="0" max="0.1" step="0.005" />
+            <div id="faceExtrudeTxt"></div>
+          </div>
         </div>
 
         <div>

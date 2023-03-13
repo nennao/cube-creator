@@ -2,6 +2,7 @@ import { mat3, mat4, vec2, vec3 } from "gl-matrix";
 
 import { Camera } from "./camera";
 import { Geometry } from "./geometry";
+import { faceDefaults, Preset, presetDefault, PRESETS } from "./presets";
 import {
   addBevel,
   addFaceBevel,
@@ -12,7 +13,23 @@ import {
   squareData,
 } from "./shapes";
 import * as utils from "./utils";
-import { acosC, clamp, deg, max, min, mR, rad, randInt, vec3ToV3, ShallowNormalsInfo, TriVec3, V3 } from "./utils";
+import {
+  acosC,
+  clamp,
+  deg,
+  hexToNRgb,
+  max,
+  min,
+  mR,
+  nRgbToHex,
+  rad,
+  randExp,
+  randInt,
+  ShallowNormalsInfo,
+  TriVec3,
+  V3,
+  vec3ToV3,
+} from "./utils";
 import { Scene } from "./scene";
 
 const EPSILON = 0.0000001;
@@ -27,6 +44,7 @@ enum FaceId {
   B = "B",
   F = "F",
 }
+const FACES = [FaceId.R, FaceId.U, FaceId.F, FaceId.L, FaceId.D, FaceId.B] as const;
 
 enum Axis {
   x = "x",
@@ -88,16 +106,104 @@ const COLORS_BRIGHT: ColorSet = {
   [FaceId.B]: [0.24, 0.62, 0.81], [FaceId.F]: [0.45, 0.75, 0.15],
 };
 
-const COLOR_SCHEMES = {
+// prettier-ignore
+const COLORS_NEUTRAL: ColorSet = {
+  [FaceId.L]: [0.898, 0.459, 0.122], [FaceId.R]: [0.878, 0.141, 0.267],
+  [FaceId.D]: [0.929, 0.929, 0.269], [FaceId.U]: [0.878, 0.878, 0.878],
+  [FaceId.B]: [0.051, 0.435, 0.729], [FaceId.F]: [0.031, 0.667, 0.161],
+};
+
+// prettier-ignore
+const COLORS_PASTEL: ColorSet = {
+  [FaceId.L]: [0.961, 0.701, 0.456], [FaceId.R]: [0.923, 0.621, 0.601],
+  [FaceId.D]: [0.960, 0.903, 0.549], [FaceId.U]: [0.973, 0.933, 0.902],
+  [FaceId.B]: [0.552, 0.790, 0.885], [FaceId.F]: [0.592, 0.885, 0.750],
+};
+
+const COLOR_SCHEMES: { [key: string]: ColorSet } = {
   classic: COLORS_CLASSIC,
   bright: COLORS_BRIGHT,
+  neutral: COLORS_NEUTRAL,
+  pastel: COLORS_PASTEL,
 };
 
 function getFaceColors(faceId: FaceId, vertexCount: number, scheme: string): V3[] {
-  const colorMap = scheme == "bright" ? COLOR_SCHEMES.bright : COLOR_SCHEMES.classic;
+  const colorMap = COLOR_SCHEMES[scheme] || COLOR_SCHEMES.classic;
   const color = colorMap[faceId];
   return Array(vertexCount).fill(color);
 }
+
+const COLORS: { [key: string]: [number, number, number] } = {
+  bl: [0.08, 0.08, 0.08],
+  st: [0.42, 0.42, 0.42],
+  si: [0.594, 0.588, 0.576],
+  go: [0.6, 0.54, 0.36],
+  rg: [0.6, 0.42, 0.36],
+};
+
+const COLORS_PROC: { [key: string]: number } = {
+  colorful: 1,
+};
+
+const randomizer = (): Preset => {
+  const r = (s = 1, t = 0, dp = 2) => mR(s * Math.random() + t, dp);
+  const blockType = r() < 0.5 ? "stickered" : "stickerless";
+
+  const [cols, colsProc, colSchemes] = [Object.keys(COLORS), Object.keys(COLORS_PROC), Object.keys(COLOR_SCHEMES)];
+  const bOptions1 = [...cols, ...colsProc];
+  const bOptions2 = [...colSchemes];
+  const fOptions = [...colSchemes, ...colSchemes, ...colsProc, ...cols];
+
+  const randCol = () => nRgbToHex(Math.random(), Math.random(), Math.random());
+  const randCol6 = () => Array.from({ length: 6 }, () => nRgbToHex(Math.random(), Math.random(), Math.random()));
+
+  const blockColor =
+    blockType == "stickered"
+      ? Math.random() < 1 / (1 + bOptions1.length)
+        ? randCol()
+        : bOptions1[randInt(bOptions1.length)]
+      : Math.random() < 1 / (1 + bOptions2.length)
+      ? randCol6()
+      : bOptions2[randInt(bOptions2.length)];
+
+  const faceColor =
+    Math.random() < 1 / (2 + fOptions.length)
+      ? randCol()
+      : Math.random() < 2 / (2 + fOptions.length)
+      ? randCol6()
+      : fOptions[randInt(fOptions.length)];
+
+  const blockR = mR(Math.random() * (blockType == "stickered" ? 0.85 : 1), 2);
+  const addStickers =
+    blockR < 0.85 ? [blockType == "stickered", blockType == "stickered", true, true, false][randInt(5)] : false;
+
+  const faceOptions = addStickers
+    ? {
+        faceCover: mR(1 - randExp(2) * (1 - (0.25 + blockR * 0.25)), 2),
+        faceR: r(),
+        faceEdgeR: r(),
+        faceRingW: r(0.95, 0.05),
+        faceExtrude: mR(randExp(2) * 0.1, 3),
+        faceColor,
+        faceMetallic: [0, 0, 0.5, 1, 1][randInt(5)],
+        faceRoughness: r(0.5),
+      }
+    : faceDefaults;
+
+  return {
+    spread: mR(1 + randExp(5) * 0.25, 3),
+    blockR,
+    bevelW: r() < 0.0 ? 0 : mR(randExp(4) * 0.5, 2),
+
+    blockType,
+    blockColor,
+    blockMetallic: [0, 0, 0.5, 1, 1][randInt(5)],
+    blockRoughness: r(0.5),
+
+    addStickers,
+    ...faceOptions,
+  };
+};
 
 type ClickedInfo = {
   axis: Axis;
@@ -131,18 +237,6 @@ type RotQueueItem = {
   elapsedT: number;
   turns: number;
   reverse?: boolean;
-};
-
-const COLORS: { [key: string]: [number, number, number] } = {
-  bl: [0.08, 0.08, 0.08],
-  st: [0.42, 0.42, 0.42],
-  si: [0.594, 0.588, 0.576],
-  go: [0.6, 0.54, 0.36],
-  rg: [0.6, 0.42, 0.36],
-};
-
-const COLORS_PROC: { [key: string]: number } = {
-  colorful: 1,
 };
 
 class FaceBounds {
@@ -436,6 +530,32 @@ type Config = {
   faceRoughness: number;
 };
 
+type ConfigUpdate = {
+  _spread?: number;
+  blockR?: number;
+  bevelW?: number;
+  faceCover?: number;
+  faceR?: number;
+  faceEdgeR?: number;
+  faceRingW?: number;
+  faceExtrude?: number;
+
+  blockType?: "stickered" | "stickerless";
+  blockColor?: string;
+  blockColorCustom?: [number, number, number];
+  blockColor2?: string;
+  blockColorCustom6?: ColorSet;
+  blockMetallic?: number;
+  blockRoughness?: number;
+
+  addStickers?: boolean;
+  faceColor?: string;
+  faceColorCustom?: [number, number, number];
+  faceColorCustom6?: ColorSet;
+  faceMetallic?: number;
+  faceRoughness?: number;
+};
+
 export class Rubik {
   private readonly gl: WebGL2RenderingContext;
   private readonly scene: Scene;
@@ -469,7 +589,7 @@ export class Rubik {
   blockRays = true;
   blockAO = true;
 
-  _spread = 1.025;
+  _spread = 1;
   blockR = 0.15;
   bevelW = 0;
   faceCover = 0.85;
@@ -482,7 +602,7 @@ export class Rubik {
     blockType: "stickered",
     blockColor: "bl",
     blockColorCustom: [0, 0, 0],
-    blockColor2: "bright",
+    blockColor2: "classic",
     blockColorCustom6: { ...COLORS_CLASSIC },
     blockMetallic: 0,
     blockRoughness: 0.25,
@@ -494,6 +614,9 @@ export class Rubik {
     faceMetallic: 0,
     faceRoughness: 0.25,
   };
+
+  private preset = "classic1";
+  private userPresets: { [key: string]: Preset } = {};
 
   get spread() {
     return Math.max(this._spread, 1.001);
@@ -536,13 +659,112 @@ export class Rubik {
     this.updateBlockGeo();
     this.blocks = this.createBlocks();
 
+    this.loadUserPresets();
     this.initDOMInputs();
 
     this.initialPosition();
+
+    this.loadConfigFromPreset();
   }
 
   private updateBlockGeo() {
     this._blockGeoData = roundedCubeData(1, this.blockR, this.bevelW);
+  }
+
+  private loadUserPresets() {
+    const presets = JSON.parse(localStorage.getItem("userPresets") || "null");
+    if (!presets) {
+      localStorage.setItem("userPresets", "{}");
+    } else {
+      this.userPresets = presets;
+    }
+  }
+
+  private loadConfigFromPreset(preset?: Preset) {
+    preset = preset || PRESETS[this.preset] || this.userPresets[this.preset] || PRESETS.classic1;
+
+    const update: ConfigUpdate = {
+      _spread: preset.spread,
+      blockR: preset.blockR,
+      bevelW: preset.bevelW,
+      faceCover: preset.faceCover,
+      faceR: preset.faceR,
+      faceEdgeR: preset.faceEdgeR,
+      faceRingW: preset.faceRingW,
+      faceExtrude: preset.faceExtrude,
+
+      blockType: preset.blockType,
+      blockMetallic: preset.blockMetallic,
+      blockRoughness: preset.blockRoughness,
+
+      addStickers: preset.addStickers,
+      faceMetallic: preset.faceMetallic,
+      faceRoughness: preset.faceRoughness,
+    };
+
+    const col = preset.blockColor;
+    if (Array.isArray(col)) {
+      update.blockColor2 = "custom6";
+      const cols = [...col, ...Array(6).fill("#000000")].map(hexToNRgb);
+      update.blockColorCustom6 = { R: cols[0], U: cols[1], F: cols[2], L: cols[3], D: cols[4], B: cols[5] };
+    } else {
+      if (COLORS.hasOwnProperty(col) || COLORS_PROC.hasOwnProperty(col)) {
+        update.blockColor = col;
+      } else if (COLOR_SCHEMES.hasOwnProperty(col)) {
+        update.blockColor2 = col;
+      } else {
+        update.blockColor = "custom";
+        update.blockColorCustom = hexToNRgb(col);
+      }
+    }
+
+    const col2 = preset.faceColor;
+    if (Array.isArray(col2)) {
+      update.faceColor = "custom6";
+      const cols = [...col2, ...Array(6).fill("#000000")].map(hexToNRgb);
+      update.faceColorCustom6 = { R: cols[0], U: cols[1], F: cols[2], L: cols[3], D: cols[4], B: cols[5] };
+    } else {
+      if (COLORS.hasOwnProperty(col2) || COLORS_PROC.hasOwnProperty(col2) || COLOR_SCHEMES.hasOwnProperty(col2)) {
+        update.faceColor = col2;
+      } else {
+        update.faceColor = "custom";
+        update.faceColorCustom = hexToNRgb(col2);
+      }
+    }
+    this.generalUIUpdate(update, false);
+  }
+
+  private saveConfigToPreset() {
+    const { _spread, blockR, bevelW, faceCover, faceR, faceEdgeR, faceRingW, faceExtrude } = this;
+    const { blockType, blockColor, blockColorCustom, blockColor2, blockColorCustom6, blockMetallic, blockRoughness } =
+      this.config;
+    const { addStickers, faceColor, faceColorCustom, faceColorCustom6, faceMetallic, faceRoughness } = this.config;
+
+    const custom6ToStrArr = (c: ColorSet) => FACES.map((f) => c[f]).map((f) => nRgbToHex(...f));
+
+    // prettier-ignore
+    const res:Preset = {
+      ...presetDefault,
+
+      spread: _spread, blockR, bevelW, ...(addStickers ? { faceCover, faceR, faceEdgeR, faceRingW, faceExtrude } : {}), blockType,
+      blockColor: blockType == "stickered" ? blockColor == "custom" ? nRgbToHex(...blockColorCustom) : blockColor
+                                           : blockColor2 == "custom6" ? custom6ToStrArr(blockColorCustom6) : blockColor2,
+      blockMetallic, blockRoughness,
+      addStickers,
+      ...(addStickers ? {
+        faceColor: faceColor == "custom6" ? custom6ToStrArr(faceColorCustom6)
+                 : faceColor == "custom" ? nRgbToHex(...faceColorCustom) : faceColor, faceMetallic, faceRoughness} : {}),
+    };
+
+    const nameInp = utils.getInputById("saveName");
+    const name = `(u)${nameInp.value}`;
+
+    this.userPresets[name] = res;
+    localStorage.setItem("userPresets", JSON.stringify(this.userPresets));
+
+    nameInp.value = "";
+    this.preset = name;
+    this.updatePresetSelectUI();
   }
 
   get blockGeoData(): [V3[], V3[], number[][]] {
@@ -595,10 +817,35 @@ export class Rubik {
     this.bounds = bounds;
   }
 
+  updatePresetSelectUI() {
+    utils.getElementById("presetsSelect").innerHTML = ["-", ...Object.keys(PRESETS), ...Object.keys(this.userPresets)]
+      .map(
+        (p) => `
+        <option id="${p}_preset" value="${p}" ${p == this.preset ? "selected" : ""} ${
+          p == "-" ? 'class="hidden"' : ""
+        }>${p}</option>`
+      )
+      .join("");
+    utils.getElementById("presetsSelect").onchange = utils.targetListener((t) => {
+      this.preset = t.value;
+      document.querySelectorAll("#presetsSelect option").forEach((n) => (n.innerHTML = n.id.split("_")[0]));
+      utils.getElementById("-_preset").classList.add("hidden");
+      this.loadConfigFromPreset();
+    });
+  }
+
+  updateDOMVal(id: string, val: number | string) {
+    utils.getElementById(id).innerText = val.toString();
+  }
+
   private initDOMInputs() {
-    const updateDOMVal = (id: string, val: number | string) => {
-      utils.getElementById(id).innerText = val.toString();
-    };
+    const { blockType, blockColor, blockColor2, addStickers, faceColor } = this.config;
+
+    const updater = (id: string) => utils.targetListener((t) => this.generalUIUpdate({ [id]: +t.value }));
+    const updaterStr = (id: string) =>
+      utils.targetListener((t) => this.generalUIUpdate({ [id]: t.value.split("_")[1] }));
+
+    this.updatePresetSelectUI();
 
     for (let id of ["blockRays", "blockAO", "showBounding"] as const) {
       const handler = utils.targetListener((t) => {
@@ -617,29 +864,15 @@ export class Rubik {
       utils.getElementById("sideMenu").classList.toggle("hidden")
     );
 
-    const spreadHandler = utils.targetListener((t) => {
-      this._spread = +t.value;
-      this.updateBoundingBox();
-      for (let block of this.blocks) block.updatePosition();
-      this.triggerRedraw();
-      updateDOMVal("spreadTxt", this._spread);
+    utils.handleButtonById("randomizer", "onclick", () => {
+      const option = utils.getElementById("-_preset") as HTMLOptionElement;
+      option.selected = true;
+      option.classList.remove("hidden");
+      document.querySelectorAll("#presetsSelect option").forEach((n) => (n.innerHTML = n.id.split("_")[0]));
+      this.loadConfigFromPreset(randomizer());
     });
-    utils.handleInputById("spreadRange", this._spread.toString(), "onchange", spreadHandler);
-    updateDOMVal("spreadTxt", this._spread);
 
-    for (let id of ["blockR", "bevelW", "faceCover", "faceR", "faceEdgeR", "faceRingW", "faceExtrude"] as const) {
-      const handler = utils.targetListener((t) => {
-        this[id] = +t.value;
-        (id == "blockR" || id == "bevelW") && this.updateBlockGeo();
-        this.updateFaceGeo();
-        this.updateGeo(id == "blockR" || id == "bevelW", true);
-        this.triggerRedraw();
-        updateDOMVal(`${id}Txt`, this[id]);
-      });
-
-      utils.handleInputById(`${id}Range`, this[id].toString(), "onchange", handler);
-      updateDOMVal(`${id}Txt`, this[id]);
-    }
+    utils.handleButtonById("save", "onclick", () => this.saveConfigToPreset());
 
     utils.handleInputById("u_Debug", "0", "onchange", () => this.triggerRedraw());
 
@@ -648,10 +881,10 @@ export class Rubik {
       this.scene.environment.intensity = +t.value;
       this.triggerRedraw();
       const envIntensity = this.scene.environment.intensity;
-      updateDOMVal("envIntensityTxt", `${mR(10 ** envIntensity, 2)} (${mR(envIntensity, 2)})`);
+      this.updateDOMVal("envIntensityTxt", `${mR(10 ** envIntensity, 2)} (${mR(envIntensity, 2)})`);
     });
     utils.handleInputById("envIntensityRange", envIntensity.toString(), "onchange", envIntensityHandler);
-    updateDOMVal("envIntensityTxt", `${mR(10 ** envIntensity, 2)} (${mR(envIntensity, 2)})`);
+    this.updateDOMVal("envIntensityTxt", `${mR(10 ** envIntensity, 2)} (${mR(envIntensity, 2)})`);
 
     const envColorHandler = utils.targetListener((t) => {
       this.scene.environment.color = t.value;
@@ -659,52 +892,19 @@ export class Rubik {
     });
     utils.handleInputById("envColorInput", this.scene.environment.color, "onchange", envColorHandler);
 
-    this.initDOMInputsConfig();
-  }
+    // --------
 
-  initDOMInputsConfig() {
-    const { blockType, blockColor, blockColor2, addStickers, faceColor } = this.config;
+    utils.handleInputById("spreadRange", this._spread.toString(), "onchange", updater("_spread"));
 
-    const updateDOMVal = (id: string, val: number) => {
-      utils.getElementById(id).innerText = val.toString();
-    };
+    for (let id of ["blockR", "bevelW", "faceCover", "faceR", "faceEdgeR", "faceRingW", "faceExtrude"] as const) {
+      utils.handleInputById(`${id}Range`, this[id].toString(), "onchange", updater(id));
+    }
 
-    const toggleStickerOptions = () => {
-      const show = this.config.addStickers;
-      utils.getElementById("faceStickerOptions").classList[show ? "remove" : "add"]("hidden");
-    };
+    // --------
 
-    const toggleBlockColorRadios = () => {
-      const active = this.config.blockType;
-      const inactive = active == "stickered" ? "stickerless" : "stickered";
-      utils.getElementById(`blockColor_${active}`).classList.remove("hidden");
-      utils.getElementById(`blockColor_${inactive}`).classList.add("hidden");
-      this.config.addStickers = active == "stickered";
-      utils.getInputById("addStickersCheck").checked = this.config.addStickers;
-      toggleStickerOptions();
-    };
+    utils.handleRadioByName("blockTypeRadio", `blockTypeRadio_${blockType}`, updaterStr("blockType"));
 
-    const blockTypeHandler = utils.targetListener((t) => {
-      this.config.blockType = t.value == "blockTypeRadio_stickered" ? "stickered" : "stickerless";
-      this.updateGeo(true, false);
-      this.triggerRedraw();
-      toggleBlockColorRadios();
-    });
-    utils.handleRadioByName("blockTypeRadio", `blockTypeRadio_${blockType}`, blockTypeHandler);
-    toggleBlockColorRadios();
-
-    const blockColorHandler = utils.targetListener((t) => {
-      this.config.blockColor = t.value.split("_")[1];
-      this.triggerRedraw();
-    });
-    utils.handleRadioByName("blockColorRadio", `blockColorRadio_${blockColor}`, blockColorHandler);
-
-    const toggleColorInputs6 = (type: string, prop: "blockColor2" | "faceColor") => {
-      const show = this.config[prop] == "custom6";
-      utils.getElementById(`${type}ColorInputs6`).classList[show ? "remove" : "add"]("hidden");
-    };
-
-    const faces = ["R", "U", "F", "L", "D", "B"] as const;
+    utils.handleRadioByName("blockColorRadio", `blockColorRadio_${blockColor}`, updaterStr("blockColor"));
 
     for (let type of ["block", "face"]) {
       const color = type == "block" ? "blockColor" : "faceColor";
@@ -712,68 +912,35 @@ export class Rubik {
       const colorCustom6 = type == "block" ? "blockColorCustom6" : "faceColorCustom6";
 
       const handler = utils.targetListener((t) => {
-        this.config[colorCustom] = utils.hexToNRgb(t.value);
-        this.config[color] = "custom";
-        utils.getInputById(`${type}ColorRadio_custom`).checked = true;
-        this.triggerRedraw();
+        this.generalUIUpdate({ [colorCustom]: utils.hexToNRgb(t.value), [color]: "custom" });
       });
       utils.handleInputById(`${type}ColorInput`, utils.nRgbToHex(...this.config[colorCustom]), "onchange", handler);
 
-      utils.getElementById(`${type}ColorInputs6`).innerHTML = faces
-        .map(
-          (f, i) =>
-            `<label for="${type}ColorInput_${i}">${f}</label> <input type="color" id="${type}ColorInput_${i}" style="width: 45px"/>
+      utils.getElementById(`${type}ColorInputs6`).innerHTML = FACES.map(
+        (f, i) =>
+          `<label for="${type}ColorInput_${i}">${f}</label> <input type="color" id="${type}ColorInput_${i}" style="width: 45px"/>
            ${i == 2 ? "<br>" : ""}`
-        )
-        .join("");
+      ).join("");
 
-      toggleColorInputs6(type, type == "block" ? "blockColor2" : "faceColor");
-
-      faces.forEach((f, i) => {
+      FACES.forEach((f, i) => {
         const handler = utils.targetListener((t) => {
-          this.config[colorCustom6][f] = utils.hexToNRgb(t.value);
-          this.updateGeo(type == "block", type == "face");
-          this.triggerRedraw();
+          this.generalUIUpdate({ [colorCustom6]: { ...this.config[colorCustom6], [f]: utils.hexToNRgb(t.value) } });
         });
         const col = this.config[colorCustom6][f];
         utils.handleInputById(`${type}ColorInput_${i}`, utils.nRgbToHex(...col), "onchange", handler);
       });
     }
 
-    const blockColorHandler2 = utils.targetListener((t) => {
-      this.config.blockColor2 = t.value.split("_")[1];
-      this.updateGeo(true, false);
-      this.triggerRedraw();
-      toggleColorInputs6("block", "blockColor2");
-    });
-    utils.handleRadioByName("blockColorRadio2", `blockColorRadio_${blockColor2}`, blockColorHandler2);
+    utils.handleRadioByName("blockColorRadio2", `blockColorRadio_${blockColor2}`, updaterStr("blockColor2"));
 
     for (let id of ["blockMetallic", "blockRoughness", "faceMetallic", "faceRoughness"] as const) {
-      const handler = utils.targetListener((t) => {
-        this.config[id] = +t.value;
-        this.triggerRedraw();
-        updateDOMVal(`${id}Txt`, this.config[id]);
-      });
-
-      utils.handleInputById(`${id}Range`, this.config[id].toString(), "onchange", handler);
-      updateDOMVal(`${id}Txt`, this.config[id]);
+      utils.handleInputById(`${id}Range`, this.config[id].toString(), "onchange", updater(id));
     }
 
-    const addStickersHandler = utils.targetListener((t) => {
-      this.config.addStickers = t.checked;
-      this.triggerRedraw();
-      toggleStickerOptions();
-    });
+    const addStickersHandler = utils.targetListener((t) => this.generalUIUpdate({ addStickers: t.checked }));
     utils.handleInputById("addStickersCheck", addStickers, "onclick", addStickersHandler);
 
-    const faceColorHandler = utils.targetListener((t) => {
-      this.config.faceColor = t.value.split("_")[1];
-      const update = COLOR_SCHEMES.hasOwnProperty(this.config.faceColor) || this.config.faceColor == "custom6";
-      update && this.updateGeo(false, true);
-      this.triggerRedraw();
-      toggleColorInputs6("face", "faceColor");
-    });
-    utils.handleRadioByName("faceColorRadio", `faceColorRadio_${faceColor}`, faceColorHandler);
+    utils.handleRadioByName("faceColorRadio", `faceColorRadio_${faceColor}`, updaterStr("faceColor"));
   }
 
   updateGeo(updateBlocks: boolean, updateFaces: boolean) {
@@ -787,6 +954,119 @@ export class Rubik {
         }
       }
     }
+  }
+
+  generalUIUpdate(config: ConfigUpdate, edited = true) {
+    let [updateBlockGeo, updateFaceGeo, updateGeoBlocks, updateGeoFaces] = [false, false, false, false];
+
+    if (config._spread) {
+      this._spread = config._spread;
+      this.updateBoundingBox();
+      for (let block of this.blocks) block.updatePosition();
+      utils.getInputById("spreadRange").value = this._spread.toString();
+      this.updateDOMVal("spreadTxt", this._spread);
+    }
+
+    for (let id of ["blockR", "bevelW", "faceCover", "faceR", "faceEdgeR", "faceRingW", "faceExtrude"] as const) {
+      if (config[id] != undefined) {
+        this[id] = config[id]!;
+        if (id == "blockR" || id == "bevelW") {
+          updateBlockGeo = true;
+          updateGeoBlocks = true;
+        }
+        updateFaceGeo = true;
+        updateGeoFaces = true;
+        utils.getInputById(`${id}Range`).value = this[id].toString();
+        this.updateDOMVal(`${id}Txt`, this[id]);
+      }
+    }
+
+    if (config.blockType) {
+      this.config.blockType = config.blockType;
+      updateGeoBlocks = true;
+      this.uiToggleBlockColorRadios();
+      utils.getInputById(`blockTypeRadio_${this.config.blockType}`).checked = true;
+    }
+
+    for (let type of ["block", "face"]) {
+      const color = type == "block" ? "blockColor" : "faceColor";
+      const colorCustom = type == "block" ? "blockColorCustom" : "faceColorCustom";
+      const colorCustom6 = type == "block" ? "blockColorCustom6" : "faceColorCustom6";
+
+      if (config[colorCustom] != undefined) {
+        this.config[colorCustom] = config[colorCustom]!;
+        this.config[color] = "custom";
+        utils.getInputById(`${type}ColorRadio_custom`).checked = true;
+        utils.getInputById(`${type}ColorInput`).value = utils.nRgbToHex(...this.config[colorCustom]);
+      }
+
+      if (config[colorCustom6] != undefined) {
+        this.config[colorCustom6] = config[colorCustom6]!;
+        FACES.forEach((f, i) => {
+          utils.getInputById(`${type}ColorInput_${i}`).value = utils.nRgbToHex(...this.config[colorCustom6][f]);
+        });
+        type == "face" && (updateGeoFaces = true);
+        type == "block" && (updateGeoBlocks = true);
+      }
+    }
+
+    if (config.blockColor != undefined) {
+      this.config.blockColor = config.blockColor;
+      utils.getInputById(`blockColorRadio_${this.config.blockColor}`).checked = true;
+    }
+
+    if (config.blockColor2 != undefined) {
+      this.config.blockColor2 = config.blockColor2;
+      updateGeoBlocks = true;
+      utils.getInputById(`blockColorRadio_${this.config.blockColor2}`).checked = true;
+      utils.getElementById("blockColorInputs6").classList[config.blockColor2 == "custom6" ? "remove" : "add"]("hidden");
+    }
+
+    for (let id of ["blockMetallic", "blockRoughness", "faceMetallic", "faceRoughness"] as const) {
+      if (config[id] != undefined) {
+        this.config[id] = config[id]!;
+        this.updateDOMVal(`${id}Txt`, this.config[id]);
+        utils.getInputById(`${id}Range`).value = this.config[id].toString();
+      }
+    }
+
+    if (config.addStickers != undefined) {
+      this.config.addStickers = config.addStickers;
+      this.uiToggleStickerOptions();
+      utils.getInputById("addStickersCheck").checked = this.config.addStickers;
+    }
+
+    if (config.faceColor != undefined) {
+      this.config.faceColor = config.faceColor;
+      const update = COLOR_SCHEMES.hasOwnProperty(this.config.faceColor) || this.config.faceColor == "custom6";
+      update && (updateGeoFaces = true);
+      utils.getInputById(`faceColorRadio_${this.config.faceColor}`).checked = true;
+      utils.getElementById("faceColorInputs6").classList[config.faceColor == "custom6" ? "remove" : "add"]("hidden");
+    }
+
+    const preset = document.querySelector("#presetsSelect option:checked:not(#-_preset)");
+    preset && edited && !preset.innerHTML.endsWith("(edited)") && (preset.innerHTML = preset.innerHTML + " (edited)");
+
+    updateBlockGeo && this.updateBlockGeo();
+    updateFaceGeo && this.updateFaceGeo();
+    (updateGeoBlocks || updateGeoFaces) && this.updateGeo(updateGeoBlocks, updateGeoFaces);
+    this.triggerRedraw();
+  }
+
+  uiToggleStickerOptions() {
+    const show = this.config.addStickers;
+    utils.getElementById("faceStickerOptions").classList[show ? "remove" : "add"]("hidden");
+    utils.getElementById("faceStickerOptions2").classList[show ? "remove" : "add"]("hidden");
+  }
+
+  uiToggleBlockColorRadios() {
+    const active = this.config.blockType;
+    const inactive = active == "stickered" ? "stickerless" : "stickered";
+    utils.getElementById(`blockColor_${active}`).classList.remove("hidden");
+    utils.getElementById(`blockColor_${inactive}`).classList.add("hidden");
+    this.config.addStickers = active == "stickered";
+    utils.getInputById("addStickersCheck").checked = this.config.addStickers;
+    this.uiToggleStickerOptions();
   }
 
   private triggerRedraw() {
