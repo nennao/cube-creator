@@ -52,7 +52,8 @@ struct MaterialInfo
 // Get normal, tangent and bitangent vectors.
 NormalInfo getNormalInfo(vec3 v)
 {
-    vec2 UV = sortedUV();
+    vec3 UVW = sortedUV();
+    vec2 UV = UVW.xy;
 
     vec3 uv_dx = dFdx(vec3(UV, 0.0));
     vec3 uv_dy = dFdy(vec3(UV, 0.0));
@@ -85,10 +86,16 @@ NormalInfo getNormalInfo(vec3 v)
     info.ng = ng;
 
 #ifdef HAS_NORMAL_MAP
-    vec3 ntex0 = normalize(texture(u_NormalSampler0, ((UV-0.5)/3.0)+0.5).rgb * 2.0 - 1.0);
-    vec3 ntex1 = normalize(texture(u_NormalSampler1, ((UV-0.5)/4.0)+0.5).rgb * 2.0 - 1.0);
-    vec3 ntex2 = normalize(texture(u_NormalSampler2, ((UV-0.5)/7.0)+0.5).rgb * 2.0 - 1.0);
-    ntex1.g *= -1.0;
+    float uv = UVW.z;
+    vec3 ntex0 = normalize(texture(u_NormalSampler0, (UV/3.0)+uv).rgb * 2.0 - 1.0);
+    vec3 ntex1 = normalize(texture(u_NormalSampler1, (UV/4.3)+uv).rgb * 2.0 - 1.0);
+    vec3 ntex2 = normalize(texture(u_NormalSampler2, (UV/7.0)+uv*3.0).rgb * 2.0 - 1.0);
+    ntex0.r *= (abs(ntex0.r) < 0.05 ? 0.5 : 1.0);
+    ntex0.g *= (abs(ntex0.g) < 0.05 ? 0.5 : 1.0);
+    ntex1.r *= (abs(ntex1.r) < 0.075 ? 0.25 : 1.0);
+    ntex1.g *= (abs(ntex1.g) < 0.075 ? 0.25 : 1.0) * -1.0;
+    ntex2.r *= (abs(ntex2.r) < 0.1 ? 0.5 : 1.0);
+    ntex2.g *= (abs(ntex2.g) < 0.1 ? 0.5 : 1.0);
 
     vec3 ntex = vec3(0, 0, 1);
     ntex = combineNormals(ntex, ntex0);

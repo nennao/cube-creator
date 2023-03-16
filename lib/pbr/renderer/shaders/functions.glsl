@@ -21,7 +21,7 @@ vec3 sortV3(vec3 v) {
 }
 
 
-vec2 sortedUV() {
+vec3 sortedUV() {
     vec3 v0 = v_PositionOrig;
 //    vec3 v = v0;
     vec3 v = v0 + u_BlockPositionOrig;
@@ -29,12 +29,12 @@ vec2 sortedUV() {
     vec3 av = abs(v_NormalOrig);
 
     if (av.y > av.x && av.y > av.z) {
-        return vec2(v.x, sign(v0.y)*v.z) + 0.5;
+        return vec3(v.x, sign(v0.y)*v.z, sign(v0.y)*(2.0/3.1));
     }
     if (av.x > av.y && av.x > av.z) {
-        return vec2(sign(v0.x)*-v.z, -v.y) + 0.5;
+        return vec3(sign(v0.x)*-v.z, -v.y, sign(v0.x)*(9.0/5.3));
     }
-    return vec2(sign(v0.z)*v.x, -v.y) + 0.5;
+    return vec3(sign(v0.z)*v.x, -v.y, sign(v0.z)*(19.0/7.0));
 }
 
 
