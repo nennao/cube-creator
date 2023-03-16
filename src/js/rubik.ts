@@ -571,8 +571,9 @@ export class Rubik {
   private readonly camera: Camera;
 
   private readonly speed = 2; // turns/s
-  private readonly solvingSpeed = 3; // turns/s
-  private readonly scramblingSpeed = 4; // turns/s
+  private solveSpeed = 3; // turns/s
+  private scrambleSpeed = 4; // turns/s
+  private scrambleMoves = 20;
   private rotationQueue: RotQueueItem[] = [];
 
   transform = mat4.create();
@@ -919,6 +920,15 @@ export class Rubik {
     });
     utils.handleInputById("envColorInput", this.scene.environment.color, "onchange", envColorHandler);
 
+    for (let id of ["scrambleMoves", "scrambleSpeed", "solveSpeed"] as const) {
+      const handler = utils.targetListener((t) => {
+        this[id] = +t.value;
+        this.updateDOMVal(`${id}Txt`, this[id]);
+      });
+      utils.handleInputById(`${id}Range`, this[id].toString(), "onchange", handler);
+      this.updateDOMVal(`${id}Txt`, this[id]);
+    }
+
     // --------
 
     utils.handleInputById("spreadRange", this._spread.toString(), "onchange", updater("_spread"));
@@ -1135,30 +1145,55 @@ export class Rubik {
   }
 
   private solve() {
-    if (this.rotating) return;
-    this.solving = true;
+    if (this.rotating) {
+      if (this.solving) {
+        this.updateButtonCount("solve", true);
+        this.rotationQueue = [this.rotationQueue[0]];
+      }
+      return;
+    }
     const facelet = this.facesToFacelet();
 
     solve(facelet).then((res) => {
       const axes = { x: Axis.x, y: Axis.y, z: Axis.z };
+      this.solving = res.length > 0;
       res.forEach(([axis, level, dir, turns]) => this.queueRotation(axes[axis], level, dir, turns));
+      this.updateButtonCount("solve");
     });
   }
 
   private scramble() {
+    if (this.rotating) {
+      if (this.scrambling) {
+        this.updateButtonCount("scramble", true);
+        this.rotationQueue = [this.rotationQueue[0]];
+      }
+      return;
+    }
+
     this.scrambling = true;
 
     const levels = [Level.m1, Level.p1];
     const dirs = [Dir.ccw, Dir.cw];
-    const randAxes = utils.shuffle([Axis.x, Axis.y, Axis.z]);
+    const axes = [Axis.x, Axis.y, Axis.z];
 
-    for (let _ of Array(randInt(3) + 3)) {
-      for (let axis of randAxes) {
-        const level = levels[randInt(2)];
-        const dir = dirs[randInt(2)];
-        this.queueRotation(axis, level, dir, 1);
-      }
+    let axis = axes[randInt(3)];
+
+    for (let _ = 0; _ < this.scrambleMoves; _++) {
+      const level = levels[randInt(2)];
+      const dir = dirs[randInt(2)];
+      this.queueRotation(axis, level, dir, 1);
+      axis = axes.filter((a) => a != axis)[randInt(2)];
     }
+    this.updateButtonCount("scramble");
+  }
+
+  private updateButtonCount(key: string, stopping = false) {
+    utils.getElementById(key).innerHTML = stopping
+      ? "stopping"
+      : this.rotationQueue.length
+      ? `(${this.rotationQueue.length}) stop ${key}`
+      : key;
   }
 
   private initialPosition() {
@@ -1187,7 +1222,7 @@ export class Rubik {
   private runRotation(dt: number) {
     if (this.rotationQueue.length) {
       const { axis, level, dir, elapsedA, elapsedT, turns, finalTurns, reverse } = this.rotationQueue[0];
-      const fullT = turns / (this.scrambling ? this.scramblingSpeed : this.solving ? this.solvingSpeed : this.speed);
+      const fullT = turns / (this.scrambling ? this.scrambleSpeed : this.solving ? this.solveSpeed : this.speed);
       const t = elapsedT + dt;
       const maxA = turns * 90;
       const a = clamp(utils.easeInOut(t, fullT, maxA, this.animAlpha), 0, maxA) + (elapsedA > maxA ? maxA : 0);
@@ -1199,6 +1234,8 @@ export class Rubik {
 
       if (isFinal) {
         this.rotationQueue.shift();
+        this.scrambling && this.updateButtonCount("scramble");
+        this.solving && this.updateButtonCount("solve");
       } else {
         this.rotationQueue[0].elapsedA = targetA;
         this.rotationQueue[0].elapsedT = t;
