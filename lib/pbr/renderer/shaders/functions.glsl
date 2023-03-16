@@ -4,7 +4,10 @@ const float M_PI = 3.141592653589793;
 in vec3 v_Position;
 in vec3 v_PositionOrig;
 in vec3 v_Normal;
+in vec3 v_NormalOrig;
 in vec3 v_Color;
+
+uniform vec3 u_BlockPositionOrig;
 
 uniform int u_NonVColor;
 uniform int u_ProcColor;
@@ -15,6 +18,28 @@ vec3 sortV3(vec3 v) {
     v.z > v.x && v.z > v.y ? v.zyx : v.xyz;
     v = v.z > v.y ? v.xzy : v.xyz;
     return v;
+}
+
+
+vec2 sortedUV() {
+    vec3 v0 = v_PositionOrig;
+//    vec3 v = v0;
+    vec3 v = v0 + u_BlockPositionOrig;
+
+    vec3 av = abs(v_NormalOrig);
+
+    if (av.y > av.x && av.y > av.z) {
+        return vec2(v.x, sign(v0.y)*v.z) + 0.5;
+    }
+    if (av.x > av.y && av.x > av.z) {
+        return vec2(sign(v0.x)*-v.z, -v.y) + 0.5;
+    }
+    return vec2(sign(v0.z)*v.x, -v.y) + 0.5;
+}
+
+
+vec3 combineNormals(vec3 n1, vec3 n2) {
+    return n1 + n2 - vec3(0, 0, 1);
 }
 
 

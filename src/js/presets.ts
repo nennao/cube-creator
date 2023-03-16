@@ -17,6 +17,8 @@ export type Preset = {
   faceColor: string | string[];
   faceMetallic: number;
   faceRoughness: number;
+
+  wearTear: number;
 };
 
 export const faceDefaults = {
@@ -43,6 +45,8 @@ export const presetDefault: Preset = {
   addStickers: false,
 
   ...faceDefaults,
+
+  wearTear: 0.2,
 };
 
 const classic1: Preset = {
@@ -64,6 +68,8 @@ const classic1: Preset = {
   faceColor: "classic",
   faceMetallic: 0,
   faceRoughness: 0.15,
+
+  wearTear: 0.2,
 };
 
 const classic2: Preset = {
@@ -85,6 +91,8 @@ const classic2: Preset = {
   faceColor: "classic",
   faceMetallic: 0,
   faceRoughness: 0.15,
+
+  wearTear: 0.2,
 };
 
 const reverse: Preset = {
@@ -106,6 +114,8 @@ const reverse: Preset = {
   faceColor: "bl",
   faceMetallic: 0,
   faceRoughness: 0.05,
+
+  wearTear: 0.2,
 };
 
 const reverse2: Preset = {
@@ -127,6 +137,8 @@ const reverse2: Preset = {
   faceColor: "bl",
   faceMetallic: 0,
   faceRoughness: 0.05,
+
+  wearTear: 0.2,
 };
 
 const toy: Preset = {
@@ -142,6 +154,8 @@ const toy: Preset = {
   addStickers: false,
 
   ...faceDefaults,
+
+  wearTear: 0.2,
 };
 
 const precious: Preset = {
@@ -163,6 +177,8 @@ const precious: Preset = {
   faceColor: "bright",
   faceMetallic: 1,
   faceRoughness: 0.15,
+
+  wearTear: 0.2,
 };
 
 const bubble: Preset = {
@@ -178,6 +194,8 @@ const bubble: Preset = {
   addStickers: false,
 
   ...faceDefaults,
+
+  wearTear: 0.2,
 };
 
 const retro1: Preset = {
@@ -191,7 +209,7 @@ const retro1: Preset = {
   faceExtrude: 0.02,
 
   blockType: "stickered",
-  blockColor: "bl",
+  blockColor: "#292929",
   blockMetallic: 0,
   blockRoughness: 0.05,
 
@@ -199,6 +217,8 @@ const retro1: Preset = {
   faceColor: "neutral",
   faceMetallic: 0,
   faceRoughness: 0.15,
+
+  wearTear: 0.5,
 };
 
 const retro2: Preset = {
@@ -220,6 +240,31 @@ const retro2: Preset = {
   faceColor: "pastel",
   faceMetallic: 0,
   faceRoughness: 0.1,
+
+  wearTear: 0.75,
+};
+
+const framed: Preset = {
+  spread: 1.025,
+  blockR: 0,
+  bevelW: 0,
+  faceCover: 1,
+  faceR: 0.05,
+  faceEdgeR: 1,
+  faceRingW: 0.15,
+  faceExtrude: 0.05,
+
+  blockType: "stickerless",
+  blockColor: "bright",
+  blockMetallic: 0,
+  blockRoughness: 0.15,
+
+  addStickers: true,
+  faceColor: "si",
+  faceMetallic: 1,
+  faceRoughness: 0.05,
+
+  wearTear: 0.2,
 };
 
 const colorful: Preset = {
@@ -241,6 +286,8 @@ const colorful: Preset = {
   faceColor: "bright",
   faceMetallic: 0,
   faceRoughness: 0.15,
+
+  wearTear: 0.2,
 };
 
 const unicorn: Preset = {
@@ -256,6 +303,8 @@ const unicorn: Preset = {
   addStickers: false,
 
   ...faceDefaults,
+
+  wearTear: 0.2,
 };
 
 const lego: Preset = {
@@ -277,6 +326,8 @@ const lego: Preset = {
   faceColor: "neutral",
   faceMetallic: 0,
   faceRoughness: 0.1,
+
+  wearTear: 0.2,
 };
 
 const fancy: Preset = {
@@ -297,6 +348,8 @@ const fancy: Preset = {
   faceColor: "go",
   faceMetallic: 0.5,
   faceRoughness: 0.23,
+
+  wearTear: 0.2,
 };
 
 export const PRESETS: { [key: string]: Preset } = {
@@ -307,6 +360,7 @@ export const PRESETS: { [key: string]: Preset } = {
   toy,
   precious,
   bubble,
+  framed,
   colorful,
   retro1,
   retro2,

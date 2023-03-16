@@ -1,5 +1,7 @@
 import { mat3, mat4, vec2, vec3 } from "gl-matrix";
 
+import { Resources, loadMaterialResources, setTexture } from "../../lib/pbr/renderer/resource_handler";
+
 import { initSolver, solve } from "./asyncSolver";
 import { Camera } from "./camera";
 import { Geometry } from "./geometry";
@@ -194,7 +196,7 @@ const randomizer = (): Preset => {
   return {
     spread: mR(1 + randExp(5) * 0.25, 3),
     blockR,
-    bevelW: r() < 0.0 ? 0 : mR(randExp(4) * 0.5, 2),
+    bevelW: r() < 0.5 ? 0 : mR(randExp(4) * 0.5, 2),
 
     blockType,
     blockColor,
@@ -203,6 +205,7 @@ const randomizer = (): Preset => {
 
     addStickers,
     ...faceOptions,
+    wearTear: mR(randExp(2), 2),
   };
 };
 
@@ -478,6 +481,7 @@ class Block {
     const { blockColor, blockColorCustom, blockMetallic, blockRoughness, addStickers } = this.root.config;
     const stickered = this.root.config.blockType == "stickered";
     this.root.shader.setUniform("u_BlockPosition", this.position);
+    this.root.shader.setUniform("u_BlockPositionOrig", this.origPosition);
     this.root.shader.setUniform("u_FaceRotation", this.faceRotation);
 
     const baseColor = [...(COLORS[blockColor] || blockColorCustom), 1];
@@ -530,6 +534,7 @@ type Config = {
   faceColorCustom6: ColorSet;
   faceMetallic: number;
   faceRoughness: number;
+  wearTear: number;
 };
 
 type ConfigUpdate = {
@@ -556,6 +561,8 @@ type ConfigUpdate = {
   faceColorCustom6?: ColorSet;
   faceMetallic?: number;
   faceRoughness?: number;
+
+  wearTear?: number;
 };
 
 export class Rubik {
@@ -618,10 +625,14 @@ export class Rubik {
     faceColorCustom6: { ...COLORS_CLASSIC },
     faceMetallic: 0,
     faceRoughness: 0.25,
+
+    wearTear: 0.5,
   };
 
   private preset = "classic1";
   private userPresets: { [key: string]: Preset } = {};
+
+  private resources?: Resources;
 
   get spread() {
     return Math.max(this._spread, 1.001);
@@ -657,6 +668,12 @@ export class Rubik {
 
     this.scene = scene;
     this.camera = scene.camera;
+
+    loadMaterialResources(gl).then((resources) => {
+      this.resources = resources;
+      this.scene.materialsLoaded = true;
+      this.scene.environment.setBG();
+    });
 
     this.updateBoundingBox();
 
@@ -707,6 +724,8 @@ export class Rubik {
       addStickers: preset.addStickers,
       faceMetallic: preset.faceMetallic,
       faceRoughness: preset.faceRoughness,
+
+      wearTear: preset.wearTear,
     };
 
     const col = preset.blockColor;
@@ -745,7 +764,8 @@ export class Rubik {
     const { _spread, blockR, bevelW, faceCover, faceR, faceEdgeR, faceRingW, faceExtrude } = this;
     const { blockType, blockColor, blockColorCustom, blockColor2, blockColorCustom6, blockMetallic, blockRoughness } =
       this.config;
-    const { addStickers, faceColor, faceColorCustom, faceColorCustom6, faceMetallic, faceRoughness } = this.config;
+    const { addStickers, faceColor, faceColorCustom, faceColorCustom6, faceMetallic, faceRoughness, wearTear } =
+      this.config;
 
     const custom6ToStrArr = (c: ColorSet) => FACES.map((f) => c[f]).map((f) => nRgbToHex(...f));
 
@@ -761,6 +781,7 @@ export class Rubik {
       ...(addStickers ? {
         faceColor: faceColor == "custom6" ? custom6ToStrArr(faceColorCustom6)
                  : faceColor == "custom" ? nRgbToHex(...faceColorCustom) : faceColor, faceMetallic, faceRoughness} : {}),
+      wearTear,
     };
 
     const nameInp = utils.getInputById("saveName");
@@ -857,8 +878,6 @@ export class Rubik {
     for (let id of ["blockRays", "blockAO", "showBounding"] as const) {
       const handler = utils.targetListener((t) => {
         this[id] = t.checked;
-        this.updateBlockGeo();
-        this.updateGeo(true, false);
         this.triggerRedraw();
       });
       utils.handleInputById(id, this[id], "onclick", handler);
@@ -941,7 +960,7 @@ export class Rubik {
 
     utils.handleRadioByName("blockColorRadio2", `blockColorRadio_${blockColor2}`, updaterStr("blockColor2"));
 
-    for (let id of ["blockMetallic", "blockRoughness", "faceMetallic", "faceRoughness"] as const) {
+    for (let id of ["blockMetallic", "blockRoughness", "faceMetallic", "faceRoughness", "wearTear"] as const) {
       utils.handleInputById(`${id}Range`, this.config[id].toString(), "onchange", updater(id));
     }
 
@@ -1030,7 +1049,7 @@ export class Rubik {
       utils.getElementById("blockColorInputs6").classList[config.blockColor2 == "custom6" ? "remove" : "add"]("hidden");
     }
 
-    for (let id of ["blockMetallic", "blockRoughness", "faceMetallic", "faceRoughness"] as const) {
+    for (let id of ["blockMetallic", "blockRoughness", "faceMetallic", "faceRoughness", "wearTear"] as const) {
       if (config[id] != undefined) {
         this.config[id] = config[id]!;
         this.updateDOMVal(`${id}Txt`, this.config[id]);
@@ -1495,6 +1514,7 @@ export class Rubik {
     const { currAngle, axis, level, dir } = this.getCurrentSliceMoveDetails();
     this.shader.setUniform("u_BlockR", this.blockR);
     this.shader.setUniform("u_BevelW", this.bevelW);
+    this.shader.setUniform("u_NormalScale", this.config.wearTear);
     this.shader.setUniform("u_Spread", this.spread);
     this.shader.setUniform("u_CurrAngle", rad(currAngle) * dir);
     this.shader.setUniform("u_Axis", ["x", "y", "z"].indexOf(axis));
@@ -1505,9 +1525,30 @@ export class Rubik {
     this.shader.setUniform("u_Debug", +(utils.getElementById("u_Debug") as HTMLInputElement).value);
   }
 
+  applyMaterialTextures(texSlotOffset: number) {
+    const { gl, resources: resources } = this;
+    const { activeShader: shader } = this.scene;
+
+    if (!resources) {
+      return texSlotOffset;
+    }
+
+    const lookup = shader.lookupUniformLocation.bind(shader);
+
+    setTexture(gl, lookup("u_NormalSampler0") || -1, resources, 0, texSlotOffset++);
+    setTexture(gl, lookup("u_NormalSampler1") || -1, resources, 1, texSlotOffset++);
+    setTexture(gl, lookup("u_NormalSampler2") || -1, resources, 2, texSlotOffset++);
+
+    return texSlotOffset;
+  }
+
   draw() {
     this.shader.bind(this.camera);
-    this.scene.environment.applyEnvironmentMap(0);
+
+    let texSlot = 0;
+    texSlot = this.scene.environment.applyEnvironmentMap(texSlot);
+    this.applyMaterialTextures(texSlot);
+
     this.setUniforms();
     this.drawBlocks();
     if (this.showBounding) {

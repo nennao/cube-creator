@@ -104,6 +104,7 @@ export class PBRShader extends ShaderBase {
     const vsDefines = ["HAS_NORMAL_VEC3 1", "HAS_COLOR_0_VEC3"];
     const fsDefines = [
       "USE_IBL 1",
+      "HAS_NORMAL_MAP 1",
       "MATERIAL_METALLICROUGHNESS 1",
       "TONEMAP_ACES_NARKOWICZ 1",
       "TONEMAP_ACES_HILL 2",

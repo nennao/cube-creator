@@ -52,7 +52,8 @@ struct MaterialInfo
 // Get normal, tangent and bitangent vectors.
 NormalInfo getNormalInfo(vec3 v)
 {
-    vec2 UV = getNormalUV();
+    vec2 UV = sortedUV();
+
     vec3 uv_dx = dFdx(vec3(UV, 0.0));
     vec3 uv_dy = dFdy(vec3(UV, 0.0));
 
@@ -84,9 +85,19 @@ NormalInfo getNormalInfo(vec3 v)
     info.ng = ng;
 
 #ifdef HAS_NORMAL_MAP
-    info.ntex = texture(u_NormalSampler, UV).rgb * 2.0 - vec3(1.0);
-    info.ntex *= vec3(u_NormalScale, u_NormalScale, 1.0);
-    info.ntex = normalize(info.ntex);
+    vec3 ntex0 = normalize(                texture(u_NormalSampler0, ((UV-0.5)/3.0)+0.5).rgb * 2.0 - 1.0) ;
+    vec3 ntex1 = normalize(texture(u_NormalSampler1, ((UV-0.5)/4.0)+0.5).rgb * 2.0 - 1.0);
+    vec3 ntex2 = normalize(                texture(u_NormalSampler2, ((UV-0.5)/7.0)+0.5).rgb * 2.0 - 1.0) ;
+    ntex1.g *= -1.0;
+
+    vec3 ntex = vec3(0, 0, 1);
+    ntex = combineNormals(ntex, ntex0);
+    ntex = combineNormals(ntex, ntex1);
+    ntex = combineNormals(ntex, ntex2);
+    ntex = normalize(clamp(ntex, -1.0, 1.0));
+
+    float scale = u_NormalScale * u_NormalScale;
+    info.ntex = normalize(ntex * vec3(scale, scale, 1.0));
     info.n = normalize(mat3(t, b, ng) * info.ntex);
 #else
     info.n = ng;

@@ -1,6 +1,13 @@
 import { ImageHDR, loadHDR } from "../../hdrpng";
 import { iblSampler } from "../../ibl_sampler";
 
+// @ts-ignore
+import normalUrl0 from "url:../../../assets/material/MetalSpotty.jpg";
+// @ts-ignore
+import normalUrl1 from "url:../../../assets/material/ScratchedNormal.png";
+// @ts-ignore
+import normalUrl2 from "url:../../../assets/material/metal_0026.png";
+
 type Sampler = {
   magFilter: GLenum;
   minFilter: GLenum;
@@ -20,6 +27,13 @@ type TexImage = {
   image: WebGLTexture;
 };
 
+function setSampler(gl: WebGL2RenderingContext, samplerObj: Sampler, type: GLenum) {
+  gl.texParameteri(type, gl.TEXTURE_WRAP_S, samplerObj.wrapS);
+  gl.texParameteri(type, gl.TEXTURE_WRAP_T, samplerObj.wrapT);
+  gl.texParameteri(type, gl.TEXTURE_MIN_FILTER, samplerObj.minFilter);
+  gl.texParameteri(type, gl.TEXTURE_MAG_FILTER, samplerObj.magFilter);
+}
+
 const getImage = (type: GLenum, image: WebGLTexture): TexImage => ({ type, image });
 
 type Texture = {
@@ -29,13 +43,31 @@ type Texture = {
   glTexture?: WebGLTexture;
 };
 
+function loadHTMLImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener("load", () => resolve(image));
+    image.addEventListener("error", reject);
+    image.src = url;
+    image.crossOrigin = "";
+  });
+}
+
+async function loadHTMLImages(images: string[]) {
+  const imagePromises = [];
+  for (let url of images) {
+    imagePromises.push(loadHTMLImage(url));
+  }
+  return Promise.all(imagePromises);
+}
+
 const getTexture = (sampler: number, source: number, type: GLenum): Texture => ({
   type,
   sampler,
   source,
 });
 
-class Resources {
+export class Resources {
   samplers: Sampler[] = [];
   images: TexImage[] = [];
   textures: Texture[] = [];
@@ -89,6 +121,30 @@ export function setTexture(
   return true;
 }
 
+export async function loadMaterialResources(gl: WebGL2RenderingContext) {
+  const resources = new Resources();
+
+  const sampler = getSampler(gl.LINEAR, gl.LINEAR_MIPMAP_LINEAR, gl.REPEAT, gl.REPEAT);
+  resources.samplers.push(sampler);
+
+  const type = gl.TEXTURE_2D;
+  const images = await loadHTMLImages([normalUrl0, normalUrl1, normalUrl2]);
+
+  images.forEach((image, i) => {
+    const texture = gl.createTexture()!;
+
+    gl.bindTexture(type, texture);
+    setSampler(gl, sampler, type);
+
+    gl.texImage2D(type, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    gl.generateMipmap(type);
+
+    resources.images.push(getImage(type, texture));
+    resources.textures.push(getTexture(0, i, type));
+  });
+  return resources;
+}
+
 export async function loadEnvironment(gl: WebGL2RenderingContext, hdrFileName: string) {
   const response = await fetch(hdrFileName);
   const data = await response.arrayBuffer();
@@ -109,7 +165,6 @@ async function _loadEnvironmentFromPanorama(gl: WebGL2RenderingContext, imageHDR
   environmentFiltering.filterAll();
 
   // Diffuse (diffuseEnvMap = 0)
-
   environment.samplers.push(getSampler(gl.LINEAR, gl.LINEAR, gl.CLAMP_TO_EDGE, gl.CLAMP_TO_EDGE));
   environment.images.push(getImage(gl.TEXTURE_CUBE_MAP, environmentFiltering.lambertianTextureID));
   environment.textures.push(getTexture(0, 0, gl.TEXTURE_CUBE_MAP));

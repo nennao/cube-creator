@@ -14,7 +14,9 @@ uniform mat3 u_EnvRotation;
 // General Material
 
 
-//uniform sampler2D u_NormalSampler;
+uniform sampler2D u_NormalSampler0;
+uniform sampler2D u_NormalSampler1;
+uniform sampler2D u_NormalSampler2;
 uniform float u_NormalScale;
 uniform int u_NormalUVSet;
 uniform mat3 u_NormalUVTransform;

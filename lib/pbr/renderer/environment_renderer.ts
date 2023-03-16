@@ -9,6 +9,7 @@ import { loadEnvironment, EnvResources, setTexture } from "./resource_handler";
 
 // @ts-ignore
 import hdrFile from "url:../../../assets/environments/Colorful_Studio.hdr";
+
 class EnvironmentRenderer {
   private readonly gl: WebGL2RenderingContext;
   private readonly scene: Scene;
@@ -123,7 +124,7 @@ class EnvironmentRenderer {
     const { activeShader: shader } = this.scene;
 
     if (!resources) {
-      return;
+      return texSlotOffset;
     }
 
     const lookup = shader.lookupUniformLocation.bind(shader);

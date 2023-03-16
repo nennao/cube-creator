@@ -25,11 +25,12 @@ export class Scene {
 
   private readonly cube: Rubik;
 
+  materialsLoaded = false;
   environmentLoaded = false;
   moveCamera = false;
 
   get ready() {
-    return this.environmentLoaded;
+    return this.environmentLoaded && this.materialsLoaded;
   }
 
   constructor(gl: WebGL2RenderingContext, camera: Camera) {
