@@ -95,7 +95,7 @@ const classic2: Preset = {
   wearTear: 0.2,
 };
 
-const reverse: Preset = {
+const reverse1: Preset = {
   spread: 1.025,
   blockR: 0.15,
   bevelW: 0,
@@ -354,14 +354,14 @@ const fancy: Preset = {
 
 export const PRESETS: { [key: string]: Preset } = {
   classic1,
+  reverse1,
   classic2,
-  reverse,
   reverse2,
   toy,
   precious,
   bubble,
-  framed,
   colorful,
+  framed,
   retro1,
   retro2,
   unicorn,

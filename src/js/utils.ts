@@ -105,7 +105,7 @@ export function targetListener(listener: (t: HTMLInputElement) => void) {
   };
 }
 
-type InputEvents = "onclick" | "onchange";
+type InputEvents = "onclick" | "onchange" | "oninput";
 
 export function handleInputById(id: string, val: string | boolean, type: InputEvents, listener: (e: Event) => void) {
   const el = document.getElementById(id);

@@ -47,7 +47,7 @@ enum FaceId {
   B = "B",
   F = "F",
 }
-const FACES = [FaceId.R, FaceId.U, FaceId.F, FaceId.L, FaceId.D, FaceId.B] as const;
+const FACES = [FaceId.F, FaceId.U, FaceId.R, FaceId.B, FaceId.D, FaceId.L] as const;
 
 enum Axis {
   x = "x",
@@ -208,6 +208,22 @@ const randomizer = (): Preset => {
     wearTear: mR(randExp(2), 2),
   };
 };
+
+function sanitizeInput(val: string) {
+  const res = [];
+  for (let a of val) {
+    const code = a.charCodeAt(0);
+    if (
+      (code > 47 && code < 58) || // numeric (0-9)
+      (code > 64 && code < 91) || // upper alpha (A-Z)
+      (code > 96 && code < 123) // lower alpha (a-z)
+    ) {
+      res.push(a);
+      if (res.length == 16) break;
+    }
+  }
+  return res.join("");
+}
 
 type ClickedInfo = {
   axis: Axis;
@@ -614,7 +630,7 @@ export class Rubik {
   config: Config = {
     blockType: "stickered",
     blockColor: "bl",
-    blockColorCustom: [0, 0, 0],
+    blockColorCustom: [1, 0.5, 0.5],
     blockColor2: "classic",
     blockColorCustom6: { ...COLORS_CLASSIC },
     blockMetallic: 0,
@@ -622,7 +638,7 @@ export class Rubik {
 
     addStickers: true,
     faceColor: "classic",
-    faceColorCustom: [0, 0, 0],
+    faceColorCustom: [1, 0.5, 0.5],
     faceColorCustom6: { ...COLORS_CLASSIC },
     faceMetallic: 0,
     faceRoughness: 0.25,
@@ -632,6 +648,7 @@ export class Rubik {
 
   private preset = "classic1";
   private userPresets: { [key: string]: Preset } = {};
+  private presetToDelete: string | null = null;
 
   private resources?: Resources;
 
@@ -761,7 +778,20 @@ export class Rubik {
     this.generalUIUpdate(update, false);
   }
 
+  private deletePreset() {
+    this.presetToDelete && delete this.userPresets[this.presetToDelete];
+    if (this.preset == this.presetToDelete) {
+      this.preset = "---";
+    }
+    this.presetToDelete = null;
+    localStorage.setItem("userPresets", JSON.stringify(this.userPresets));
+    this.updatePresetSelectUI();
+  }
+
   private saveConfigToPreset() {
+    // @ts-ignore
+    new bootstrap.Collapse("#accBody-savePresets").hide();
+
     const { _spread, blockR, bevelW, faceCover, faceR, faceEdgeR, faceRingW, faceExtrude } = this;
     const { blockType, blockColor, blockColorCustom, blockColor2, blockColorCustom6, blockMetallic, blockRoughness } =
       this.config;
@@ -786,7 +816,7 @@ export class Rubik {
     };
 
     const nameInp = utils.getInputById("saveName");
-    const name = `(u)${nameInp.value}`;
+    const name = `(u)${nameInp.value || nameInp.placeholder}`;
 
     this.userPresets[name] = res;
     localStorage.setItem("userPresets", JSON.stringify(this.userPresets));
@@ -846,20 +876,82 @@ export class Rubik {
     this.bounds = bounds;
   }
 
+  handleSaverUI(randName = false) {
+    let name = this.preset;
+    if (randName || name == "---") {
+      let i = 1;
+      name = `(u)random${i}`;
+      while (this.userPresets[name]) {
+        i++;
+        name = `(u)random${i}`;
+      }
+    }
+
+    utils.getInputById("saveName").placeholder = name.replace("(u)", "");
+    this.handleSaverUIText(name);
+  }
+  handleSaverUIText(name: string) {
+    const overriding = !!this.userPresets[name];
+    utils.getElementById("saveHelp").classList[overriding ? "remove" : "add"]("hidden");
+    utils.getElementById("saveHelpNew").classList[overriding ? "add" : "remove"]("hidden");
+  }
+
   updatePresetSelectUI() {
-    utils.getElementById("presetsSelect").innerHTML = ["-", ...Object.keys(PRESETS), ...Object.keys(this.userPresets)]
-      .map(
-        (p) => `
-        <option id="${p}_preset" value="${p}" ${p == this.preset ? "selected" : ""} ${
-          p == "-" ? 'class="hidden"' : ""
-        }>${p}</option>`
-      )
-      .join("");
-    utils.getElementById("presetsSelect").onchange = utils.targetListener((t) => {
-      this.preset = t.value;
-      document.querySelectorAll("#presetsSelect option").forEach((n) => (n.innerHTML = n.id.split("_")[0]));
-      utils.getElementById("-_preset").classList.add("hidden");
-      this.loadConfigFromPreset();
+    const u = "(u)";
+    utils.getElementById("presetChoice").innerHTML = this.preset.replace(u, "");
+
+    const htmlStr =
+      `<li><h6 class="dropdown-header">presets</h6></li>` +
+      Object.keys(PRESETS)
+        .map((p) => `<li><a id="${p}_preset" class="dropdown-item">${p}</a></li>`)
+        .join("");
+    const htmlStr2 =
+      `<li><hr class="dropdown-divider"></li>
+       <li><h6 class="dropdown-header">user presets</h6></li>` +
+      Object.keys(this.userPresets)
+        .map(
+          (p) => `
+          <li>
+            <a id="${p}_preset" class="dropdown-item">
+              ${p.replace(u, "")}
+              <button class="btn2 trash-btn" id="${p}_del"  data-bs-toggle="modal" data-bs-target="#deleteModal">
+                <span class="trash-icon"></span>
+              </button>
+            </a>
+          </li>`
+        )
+        .join("");
+
+    utils.getElementById("presetsSelect").innerHTML = htmlStr + (Object.keys(this.userPresets).length ? htmlStr2 : "");
+
+    const activeOption = () => {
+      document.querySelectorAll("#presetsSelect li a").forEach((n) => {
+        n.classList.remove("active");
+        this.preset == n.id.split("_")[0] && n.classList.add("active");
+      });
+    };
+    activeOption();
+    this.handleSaverUI();
+
+    document.querySelectorAll("#presetsSelect li a").forEach((n) => {
+      if (!(n instanceof HTMLAnchorElement)) return;
+      n.onclick = (e) => {
+        if (!(e.target instanceof HTMLAnchorElement)) return;
+        this.preset = n.id.split("_")[0];
+
+        utils.getElementById("presetChoice").innerHTML = this.preset.replace(u, "");
+        activeOption();
+        this.handleSaverUI();
+        this.loadConfigFromPreset();
+      };
+    });
+
+    document.querySelectorAll("#presetsSelect li a .trash-btn").forEach((n) => {
+      if (!(n instanceof HTMLButtonElement)) return;
+      n.onclick = () => {
+        this.presetToDelete = n.id.split("_")[0];
+        utils.getElementById("delName").innerHTML = this.presetToDelete.replace(u, "");
+      };
     });
   }
 
@@ -888,17 +980,27 @@ export class Rubik {
     utils.handleButtonById("scramble", "onclick", () => this.scramble());
     utils.handleButtonById("reset", "onclick", () => this.reset());
 
-    utils.handleButtonById("sideMenuButton", "onclick", () =>
-      utils.getElementById("sideMenu").classList.toggle("hidden")
+    utils.handleButtonById("smButton", "onclick", () => utils.getElementById("sideMenuButton").classList.add("transp"));
+    utils.handleButtonById("sideMenuClose", "onclick", () =>
+      utils.getElementById("sideMenuButton").classList.remove("transp")
     );
 
     utils.handleButtonById("randomizer", "onclick", () => {
-      const option = utils.getElementById("-_preset") as HTMLOptionElement;
-      option.selected = true;
-      option.classList.remove("hidden");
-      document.querySelectorAll("#presetsSelect option").forEach((n) => (n.innerHTML = n.id.split("_")[0]));
+      utils.getElementById("presetChoice").innerHTML = "---";
+      this.handleSaverUI(true);
+      document.querySelectorAll("#presetsSelect li a").forEach((n) => {
+        n.classList.remove("active");
+      });
       this.loadConfigFromPreset(randomizer());
     });
+
+    const handleSaveNameChange = utils.targetListener((t) => {
+      t.value = sanitizeInput(t.value);
+      this.handleSaverUIText(`(u)${t.value}`);
+    });
+    utils.handleInputById("saveName", "", "oninput", handleSaveNameChange);
+
+    utils.handleButtonById("delModalButton", "onclick", () => this.deletePreset());
 
     utils.handleButtonById("save", "onclick", () => this.saveConfigToPreset());
 
@@ -943,6 +1045,16 @@ export class Rubik {
 
     utils.handleRadioByName("blockColorRadio", `blockColorRadio_${blockColor}`, updaterStr("blockColor"));
 
+    const getColor6html = (ty: string, arr: string[]) =>
+      arr
+        .map(
+          (f) => `
+        <span>
+          <label for="${ty}ColorInput_${f}">${f}</label> <input type="color" id="${ty}ColorInput_${f}" />
+        </span>`
+        )
+        .join("");
+
     for (let type of ["block", "face"]) {
       const color = type == "block" ? "blockColor" : "faceColor";
       const colorCustom = type == "block" ? "blockColorCustom" : "faceColorCustom";
@@ -953,18 +1065,15 @@ export class Rubik {
       });
       utils.handleInputById(`${type}ColorInput`, utils.nRgbToHex(...this.config[colorCustom]), "onchange", handler);
 
-      utils.getElementById(`${type}ColorInputs6`).innerHTML = FACES.map(
-        (f, i) =>
-          `<label for="${type}ColorInput_${i}">${f}</label> <input type="color" id="${type}ColorInput_${i}" style="width: 45px"/>
-           ${i == 2 ? "<br>" : ""}`
-      ).join("");
+      utils.getElementById(`${type}ColorInputs6row1`).innerHTML = getColor6html(type, FACES.slice(0, 3));
+      utils.getElementById(`${type}ColorInputs6row2`).innerHTML = getColor6html(type, FACES.slice(3, 6));
 
-      FACES.forEach((f, i) => {
+      FACES.forEach((f) => {
         const handler = utils.targetListener((t) => {
           this.generalUIUpdate({ [colorCustom6]: { ...this.config[colorCustom6], [f]: utils.hexToNRgb(t.value) } });
         });
         const col = this.config[colorCustom6][f];
-        utils.handleInputById(`${type}ColorInput_${i}`, utils.nRgbToHex(...col), "onchange", handler);
+        utils.handleInputById(`${type}ColorInput_${f}`, utils.nRgbToHex(...col), "onchange", handler);
       });
     }
 
@@ -1039,8 +1148,8 @@ export class Rubik {
 
       if (config[colorCustom6] != undefined) {
         this.config[colorCustom6] = config[colorCustom6]!;
-        FACES.forEach((f, i) => {
-          utils.getInputById(`${type}ColorInput_${i}`).value = utils.nRgbToHex(...this.config[colorCustom6][f]);
+        FACES.forEach((f) => {
+          utils.getInputById(`${type}ColorInput_${f}`).value = utils.nRgbToHex(...this.config[colorCustom6][f]);
         });
         type == "face" && (updateGeoFaces = true);
         type == "block" && (updateGeoBlocks = true);
@@ -1081,8 +1190,8 @@ export class Rubik {
       utils.getElementById("faceColorInputs6").classList[config.faceColor == "custom6" ? "remove" : "add"]("hidden");
     }
 
-    const preset = document.querySelector("#presetsSelect option:checked:not(#-_preset)");
-    preset && edited && !preset.innerHTML.endsWith("(edited)") && (preset.innerHTML = preset.innerHTML + " (edited)");
+    const preset = utils.getElementById("presetChoice");
+    if (edited && preset.innerHTML != "---" && !preset.innerHTML.endsWith("(edited)")) preset.innerHTML += " (edited)";
 
     updateBlockGeo && this.updateBlockGeo();
     updateFaceGeo && this.updateFaceGeo();
@@ -1093,7 +1202,6 @@ export class Rubik {
   uiToggleStickerOptions() {
     const show = this.config.addStickers;
     utils.getElementById("faceStickerOptions").classList[show ? "remove" : "add"]("hidden");
-    utils.getElementById("faceStickerOptions2").classList[show ? "remove" : "add"]("hidden");
   }
 
   uiToggleBlockColorRadios() {

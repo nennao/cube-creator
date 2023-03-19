@@ -78,7 +78,7 @@ export class Camera {
   handleZoom(delta: number) {
     this.distance = mR(this.distance + delta, 3);
     if (this.distance > 30) this.distance = 30;
-    if (this.distance < 6) this.distance = 6;
+    if (this.distance < 8) this.distance = 8;
   }
 
   private handleWheelZoom() {
