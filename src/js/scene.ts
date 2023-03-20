@@ -225,6 +225,7 @@ export class Scene {
   }
 
   renderAll() {
+    this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
     // this.environment.drawEnvironmentMap();
     this.cube.draw();
   }
@@ -245,8 +246,6 @@ export class Scene {
 
     if (play) {
       this.camera.update();
-
-      this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
 
       this.renderAll();
     }
