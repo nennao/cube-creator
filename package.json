@@ -3,7 +3,7 @@
   "source": "src/index.html",
   "scripts": {
     "start": "parcel",
-    "build": "parcel build --dist-dir deploy/dist",
+    "build": "parcel build --dist-dir deploy/dist --public-url .",
     "deploy": "gh-pages -d deploy/dist"
   },
   "dependencies": {
