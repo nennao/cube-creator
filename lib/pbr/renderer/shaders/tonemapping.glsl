@@ -6,6 +6,10 @@ uniform vec3 u_EnvColor;
 const float GAMMA = 2.2;
 const float INV_GAMMA = 1.0 / GAMMA;
 
+// tone map enum
+const int TONEMAP_ACES_NARKOWICZ = 1;
+const int TONEMAP_ACES_HILL = 2;
+const int TONEMAP_ACES_HILL_EXPOSURE_BOOST = 3;
 
 // sRGB => XYZ => D65_2_D60 => AP1 => RRT_SAT
 const mat3 ACESInputMat = mat3
@@ -35,7 +39,7 @@ vec3 linearTosRGB(vec3 color)
 
 // sRGB to linear approximation
 // see http://chilliant.blogspot.com/2012/08/srgb-approximations-for-hlsl.html
-vec3 sRGBToLinear(vec3 srgbIn)
+vec3 sRGBToLinearV3(vec3 srgbIn)
 {
     return vec3(pow(srgbIn.xyz, vec3(GAMMA)));
 }
@@ -48,7 +52,7 @@ float sRGBToLinearF(float srgbIn)
 
 vec4 sRGBToLinear(vec4 srgbIn)
 {
-    return vec4(sRGBToLinear(srgbIn.xyz), srgbIn.w);
+    return vec4(sRGBToLinearV3(srgbIn.xyz), srgbIn.w);
 }
 
 
@@ -121,7 +125,7 @@ vec3 desaturate(vec3 color) {
     return mix(color, vec3(grey), greyAmt);
 }
 
-vec4 desaturate(vec4 color) {
+vec4 desaturateV4(vec4 color) {
     return vec4(desaturate(color.rgb), color.a);
 }
 
@@ -131,6 +135,6 @@ vec3 colorLighting(vec3 color) {
     return color * (1.0+strength*(u_EnvColor - vec3(0.5)));
 }
 
-vec4 colorLighting(vec4 color) {
+vec4 colorLightingV4(vec4 color) {
     return vec4(colorLighting(color.rgb), color.a);
 }

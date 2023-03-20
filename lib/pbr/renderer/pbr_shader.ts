@@ -9,8 +9,6 @@ import pbrShader from "./shaders/pbr.frag";
 // @ts-ignore
 import utilsShader from "./shaders/utils.glsl";
 // @ts-ignore
-import brdfShader from "./shaders/brdf.glsl";
-// @ts-ignore
 import materialInfoShader from "./shaders/material_info.glsl";
 // @ts-ignore
 import iblShader from "./shaders/ibl.glsl";
@@ -20,6 +18,11 @@ import texturesShader from "./shaders/textures.glsl";
 import tonemappingShader from "./shaders/tonemapping.glsl";
 // @ts-ignore
 import shaderFunctions from "./shaders/functions.glsl";
+
+// @ts-ignore
+import VERTMin from "./vert.min.vert";
+// @ts-ignore
+import FRAGMin from "./frag.min.frag";
 
 function completeShaderSrc(sources: Map<string, string>) {
   for (let [key, src] of sources) {
@@ -70,20 +73,19 @@ function getDebugDefines() {
      5: "DEBUG_BITANGENT",
      6: "DEBUG_ALPHA",
      7: "DEBUG_UV_0",
-     8: "DEBUG_UV_1",
-     9: "DEBUG_OCCLUSION",
-    10: "DEBUG_EMISSIVE",
-    11: "DEBUG_METALLIC_ROUGHNESS",
-    12: "DEBUG_BASE_COLOR",
-    13: "DEBUG_ROUGHNESS",
-    14: "DEBUG_METALLIC",
+     8: "DEBUG_OCCLUSION",
+     9: "DEBUG_EMISSIVE",
+    10: "DEBUG_METALLIC_ROUGHNESS",
+    11: "DEBUG_BASE_COLOR",
+    12: "DEBUG_ROUGHNESS",
+    13: "DEBUG_METALLIC",
   };
 
   const defines = Object.entries(views).map(([i, v]) => v + " " + i);
   return [...defines, `DEBUG ${views[0]}`];
 }
 
-export class PBRShader extends ShaderBase {
+export class PBRShader0 extends ShaderBase {
   readonly vertexPosition: GLint;
   readonly vertexColor: GLint;
   readonly vertexNormal: GLint;
@@ -94,27 +96,39 @@ export class PBRShader extends ShaderBase {
     shaderSources.set("pbr.frag", pbrShader);
     shaderSources.set("material_info.glsl", materialInfoShader);
     shaderSources.set("utils.glsl", utilsShader);
-    shaderSources.set("brdf.glsl", brdfShader);
     shaderSources.set("ibl.glsl", iblShader);
     shaderSources.set("tonemapping.glsl", tonemappingShader);
     shaderSources.set("textures.glsl", texturesShader);
     shaderSources.set("functions.glsl", shaderFunctions);
 
     completeShaderSrc(shaderSources);
-    const vsDefines = ["HAS_NORMAL_VEC3 1", "HAS_COLOR_0_VEC3"];
-    const fsDefines = [
-      "USE_IBL 1",
-      "HAS_NORMAL_MAP 1",
-      "MATERIAL_METALLICROUGHNESS 1",
-      "TONEMAP_ACES_NARKOWICZ 1",
-      "TONEMAP_ACES_HILL 2",
-      "TONEMAP_ACES_HILL_EXPOSURE_BOOST 3",
-    ].concat(vsDefines, getDebugDefines());
+    const vsDefines: string[] = [];
+    const fsDefines = getDebugDefines();
     // const fsDefines = vsDefines;
     const vsSrc = selectShader(shaderSources, "primitive.vert", vsDefines);
     const fsSrc = selectShader(shaderSources, "pbr.frag", fsDefines);
 
     super(gl, vsSrc, fsSrc);
+    this.vertexPosition = this.lookupAttribLocationStrict("a_position");
+    this.vertexColor = this.lookupAttribLocationStrict("a_color_0");
+    this.vertexNormal = this.lookupAttribLocationStrict("a_normal");
+  }
+
+  setUniforms(camera: Camera) {
+    this.setUniform("u_ViewProjectionMatrix", mat4.multiply(mat4.create(), camera.projectionMatrix, camera.viewMatrix));
+    this.setUniform("u_Camera", camera.position);
+
+    this.setUniform("u_Exposure", 1);
+  }
+}
+
+export class PBRShader extends ShaderBase {
+  readonly vertexPosition: GLint;
+  readonly vertexColor: GLint;
+  readonly vertexNormal: GLint;
+
+  constructor(gl: WebGL2RenderingContext) {
+    super(gl, VERTMin, FRAGMin);
     this.vertexPosition = this.lookupAttribLocationStrict("a_position");
     this.vertexColor = this.lookupAttribLocationStrict("a_color_0");
     this.vertexNormal = this.lookupAttribLocationStrict("a_normal");

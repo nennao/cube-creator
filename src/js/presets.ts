@@ -49,7 +49,7 @@ export const presetDefault: Preset = {
   wearTear: 0.2,
 };
 
-const classic1: Preset = {
+const classic: Preset = {
   spread: 1.025,
   blockR: 0.15,
   bevelW: 0,
@@ -95,7 +95,7 @@ const classic2: Preset = {
   wearTear: 0.2,
 };
 
-const reverse1: Preset = {
+const reverse: Preset = {
   spread: 1.025,
   blockR: 0.15,
   bevelW: 0,
@@ -198,7 +198,7 @@ const bubble: Preset = {
   wearTear: 0.2,
 };
 
-const retro1: Preset = {
+const retro: Preset = {
   spread: 1,
   blockR: 0.25,
   bevelW: 0,
@@ -353,8 +353,8 @@ const fancy: Preset = {
 };
 
 export const PRESETS: { [key: string]: Preset } = {
-  classic1,
-  reverse1,
+  classic,
+  reverse,
   classic2,
   reverse2,
   toy,
@@ -362,7 +362,7 @@ export const PRESETS: { [key: string]: Preset } = {
   bubble,
   colorful,
   framed,
-  retro1,
+  retro,
   retro2,
   unicorn,
   lego,

@@ -1,0 +1,2 @@
+#version 300 es
+uniform mat4 u_ViewProjectionMatrix,u_RubikMatrix,u_ModelMatrix;uniform mat3 u_FaceRotation;in vec3 a_position;out vec3 v_Position,v_PositionOrig;in vec3 a_normal;out vec3 v_Normal,v_NormalOrig;in vec3 a_color_0;out vec3 v_Color;void main(){gl_PointSize=1.f;vec4 v=u_RubikMatrix*u_ModelMatrix*vec4(u_FaceRotation*a_position,1);v_Position=v.xyz;v_PositionOrig=a_position;v_Normal=normalize(vec3(u_RubikMatrix*u_ModelMatrix*vec4(u_FaceRotation*a_normal,0)));v_NormalOrig=a_normal;v_Color=a_color_0;gl_Position=u_ViewProjectionMatrix*v;}

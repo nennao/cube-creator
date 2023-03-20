@@ -191,48 +191,20 @@ input[type="range"]::-moz-range-track {
 }
 
 .btn-color-cla {
-  background: linear-gradient(
-    98deg,
-    #007338 16%,
-    #d9e0e6 20% 32%,
-    #99001a 36% 48%,
-    #00338c 52% 64%,
-    #e6e626 68% 80%,
-    #b34d00 84%
-  );
+  /*prettier-ignore*/
+  background: linear-gradient(98deg, #007338 16%, #d9e0e6 20% 32%, #99001a 36% 48%, #00338c 52% 64%, #e6e626 68% 80%, #b34d00 84%);
 }
 .btn-color-bri {
-  background: linear-gradient(
-    98deg,
-    #73bf26 16%,
-    #d9d9d9 20% 32%,
-    #cf6394 36% 48%,
-    #3d9ecf 52% 64%,
-    #f2e633 68% 80%,
-    #e66b1a 84%
-  );
+  /*prettier-ignore*/
+  background: linear-gradient(98deg, #73bf26 16%, #d9d9d9 20% 32%, #cf6394 36% 48%, #3d9ecf 52% 64%, #f2e633 68% 80%, #e66b1a 84%);
 }
 .btn-color-neu {
-  background: linear-gradient(
-    98deg,
-    #08aa29 16%,
-    #e0e0e0 20% 32%,
-    #e02444 36% 48%,
-    #0d6fba 52% 64%,
-    #eded45 68% 80%,
-    #e5751f 84%
-  );
+  /*prettier-ignore*/
+  background: linear-gradient(98deg, #08aa29 16%, #e0e0e0 20% 32%, #e02444 36% 48%, #0d6fba 52% 64%, #eded45 68% 80%, #e5751f 84%);
 }
 .btn-color-pas {
-  background: linear-gradient(
-    98deg,
-    #97e2bf 16%,
-    #f8eee6 20% 32%,
-    #eb9e99 36% 48%,
-    #8dc9e2 52% 64%,
-    #f5e68c 68% 80%,
-    #f5b374 84%
-  );
+  /*prettier-ignore*/
+  background: linear-gradient(98deg, #97e2bf 16%, #f8eee6 20% 32%, #eb9e99 36% 48%, #8dc9e2 52% 64%, #f5e68c 68% 80%, #f5b374 84%);
 }
 
 .colorInputs6 {
@@ -281,9 +253,18 @@ input[type="range"]::-moz-range-track {
   width: 50%;
 }
 
+#menuAccordion .accordion-header {
+  position: sticky;
+  top: -0.5rem;
+  z-index: 10;
+}
+
 #menuAccordion .accordion-button {
   padding: 0 0.5rem;
   height: 3rem;
+}
+#menuAccordion .accordion-button:focus {
+  box-shadow: none;
 }
 
 #menuAccordion .accordion-body {

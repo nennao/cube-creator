@@ -5,10 +5,6 @@ uniform vec4 u_BaseColorFactor;
 
 uniform vec3 u_Camera;
 
-uniform mat4 u_ModelMatrix;
-uniform mat4 u_ViewMatrix;
-uniform mat4 u_ProjectionMatrix;
-
 
 struct MaterialInfo
 {
@@ -85,7 +81,7 @@ NormalInfo getNormalInfo(vec3 v)
     NormalInfo info;
     info.ng = ng;
 
-#ifdef HAS_NORMAL_MAP
+    // normal maps
     float uv = UVW.z;
     vec3 ntex0 = normalize(texture(u_NormalSampler0, (UV/3.0)+uv).rgb * 2.0 - 1.0);
     vec3 ntex1 = normalize(texture(u_NormalSampler1, (UV/4.3)+uv).rgb * 2.0 - 1.0);
@@ -106,12 +102,10 @@ NormalInfo getNormalInfo(vec3 v)
     float scale = u_NormalScale * u_NormalScale;
     info.ntex = normalize(ntex * vec3(scale, scale, 1.0));
     info.n = normalize(mat3(t, b, ng) * info.ntex);
-#else
-    info.n = ng;
-#endif
 
-    info.t = t;
-    info.b = b;
+
+    info.m = t;
+    info.l = b;
     return info;
 }
 
@@ -126,32 +120,18 @@ vec4 getBaseColor()
 
     baseColor = proceduralAdjustment(baseColor);
 
-#if defined(MATERIAL_METALLICROUGHNESS) && defined(HAS_BASE_COLOR_MAP)
-    baseColor *= texture(u_BaseColorSampler, getBaseColorUV());
-#endif
-
     return sRGBToLinear(metallicColorScale(baseColor * getVertexColor(), u_MetallicFactor));
 }
 
 
 
-#ifdef MATERIAL_METALLICROUGHNESS
 MaterialInfo getMetallicRoughnessInfo(MaterialInfo info)
 {
     info.metallic = u_MetallicFactor;
     info.perceptualRoughness = u_RoughnessFactor;
-
-#ifdef HAS_METALLIC_ROUGHNESS_MAP
-    // Roughness is stored in the 'g' channel, metallic is stored in the 'b' channel.
-    // This layout intentionally reserves the 'r' channel for (optional) occlusion map data
-    vec4 mrSample = texture(u_MetallicRoughnessSampler, getMetallicRoughnessUV());
-    info.perceptualRoughness *= mrSample.g;
-    info.metallic *= mrSample.b;
-#endif
 
     // Achromatic f0 based on IOR.
     info.c_diff = mix(info.baseColor.rgb,  vec3(0), info.metallic);
     info.f0 = mix(info.f0, info.baseColor.rgb, info.metallic);
     return info;
 }
-#endif

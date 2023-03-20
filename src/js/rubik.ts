@@ -646,7 +646,7 @@ export class Rubik {
     wearTear: 0.5,
   };
 
-  private preset = "classic1";
+  private preset = "classic";
   private userPresets: { [key: string]: Preset } = {};
   private presetToDelete: string | null = null;
 
@@ -723,7 +723,7 @@ export class Rubik {
   }
 
   private loadConfigFromPreset(preset?: Preset) {
-    preset = preset || PRESETS[this.preset] || this.userPresets[this.preset] || PRESETS.classic1;
+    preset = preset || PRESETS[this.preset] || this.userPresets[this.preset] || PRESETS.classic;
 
     const update: ConfigUpdate = {
       _spread: preset.spread,

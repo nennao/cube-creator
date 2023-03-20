@@ -10,7 +10,6 @@ uniform int u_Debug;
 #include <tonemapping.glsl>
 #include <textures.glsl>
 #include <functions.glsl>
-#include <brdf.glsl>
 #include <ibl.glsl>
 #include <material_info.glsl>
 
@@ -26,8 +25,8 @@ void main()
     vec3 v = normalize(u_Camera - v_Position);
     NormalInfo normalInfo = getNormalInfo(v);
     vec3 n = normalInfo.n;
-    vec3 t = normalInfo.t;
-    vec3 b = normalInfo.b;
+    vec3 t = normalInfo.m;
+    vec3 b = normalInfo.l;
 
     MaterialInfo materialInfo;
     materialInfo.baseColor = baseColor.rgb;
@@ -85,9 +84,6 @@ void main()
 
 #if DEBUG == DEBUG_NONE
 
-#ifdef LINEAR_OUTPUT
-    g_finalColor = vec4(color.rgb, baseColor.a);
-#else
     vec3 finalColor;
 
     switch(u_Debug) {
@@ -96,8 +92,6 @@ void main()
     }
     g_finalColor = vec4(finalColor, baseColor.a);
 
-
-#endif
 
 #else
     // In case of missing data for a debug view, render a checkerboard.
@@ -116,12 +110,9 @@ void main()
 
     // Generic:
 #if DEBUG == DEBUG_UV_0
-    g_finalColor.rgb = vec3(sortedUV(), 0);
+    g_finalColor.rgb = vec3(sortedUV().xy, 0);
 #endif
-#if DEBUG == DEBUG_UV_1 && defined(HAS_TEXCOORD_1_VEC2)
-    g_finalColor.rgb = vec3(v_texcoord_1, 0);
-#endif
-#if DEBUG == DEBUG_NORMAL_TEXTURE && defined(HAS_NORMAL_MAP)
+#if DEBUG == DEBUG_NORMAL_TEXTURE
     g_finalColor.rgb = (normalInfo.ntex + 1.0) / 2.0;
 #endif
 #if DEBUG == DEBUG_NORMAL_SHADING
@@ -131,15 +122,15 @@ void main()
     g_finalColor.rgb = (normalInfo.ng + 1.0) / 2.0;
 #endif
 #if DEBUG == DEBUG_TANGENT
-    g_finalColor.rgb = (normalInfo.t + 1.0) / 2.0;
+    g_finalColor.rgb = (normalInfo.m + 1.0) / 2.0;
 #endif
 #if DEBUG == DEBUG_BITANGENT
-    g_finalColor.rgb = (normalInfo.b + 1.0) / 2.0;
+    g_finalColor.rgb = (normalInfo.l + 1.0) / 2.0;
 #endif
 #if DEBUG == DEBUG_ALPHA
     g_finalColor.rgb = vec3(baseColor.a);
 #endif
-#if DEBUG == DEBUG_OCCLUSION && defined(HAS_OCCLUSION_MAP)
+#if DEBUG == DEBUG_OCCLUSION
     g_finalColor.rgb = vec3(ao);
 #endif
 #if DEBUG == DEBUG_EMISSIVE
@@ -147,7 +138,6 @@ void main()
 #endif
 
     // MR:
-#ifdef MATERIAL_METALLICROUGHNESS
 #if DEBUG == DEBUG_METALLIC_ROUGHNESS
     g_finalColor.rgb = linearTosRGB(f_diffuse + f_specular);
 #endif
@@ -159,6 +149,5 @@ void main()
 #endif
 #if DEBUG == DEBUG_BASE_COLOR
     g_finalColor.rgb = linearTosRGB(materialInfo.baseColor);
-#endif
 #endif
 }

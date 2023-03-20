@@ -37,7 +37,7 @@ vec3 getDiffuseLight(vec3 n)
 
 vec4 getSpecularSample(vec3 reflection, float lod)
 {
-    return colorLighting(desaturate(textureLod(u_GGXEnvSampler, u_EnvRotation * reflection, lod))) * u_EnvIntensity;
+    return colorLightingV4(desaturateV4(textureLod(u_GGXEnvSampler, u_EnvRotation * reflection, lod))) * u_EnvIntensity;
 }
 
 vec3 getIBLRadianceGGX(vec3 n, vec3 v, float roughness, vec3 F0, float specularWeight, float metallic)

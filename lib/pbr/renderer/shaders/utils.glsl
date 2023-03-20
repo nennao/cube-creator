@@ -32,9 +32,9 @@ vec3 rotate(vec3 v, float theta, int axis) {
     return axis == 0 ? rotateX(v, theta) : axis == 1 ? rotateY(v, theta) : rotateZ(v, theta);
 }
 
-vec3 rotate(vec3 v, vec3 k, float th) {
-    return v * cos(th) + cross(k, v) * sin(th) + k * dot(k, v) * (1.0-cos(th));
-}
+//vec3 rotateTh(vec3 v, vec3 k, float th) {
+//    return v * cos(th) + cross(k, v) * sin(th) + k * dot(k, v) * (1.0-cos(th));
+//}
 
 
 float raySphereCorner(vec3 ro, vec3 rd, vec3 size, float rad) {

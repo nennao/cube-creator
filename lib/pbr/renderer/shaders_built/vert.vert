@@ -1,3 +1,5 @@
+#version 300 es
+
 uniform mat4 u_ViewProjectionMatrix;
 uniform mat4 u_RubikMatrix;
 uniform mat4 u_ModelMatrix;
