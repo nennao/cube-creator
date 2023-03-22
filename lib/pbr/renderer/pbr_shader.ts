@@ -1,3 +1,10 @@
+/**
+ *
+ * based on Khronos gtlf pbr:
+ * https://github.com/KhronosGroup/glTF-Sample-Viewer/tree/main/source/Renderer
+ *
+ * */
+
 import { mat4 } from "gl-matrix";
 import { Camera } from "../../../src/js/camera";
 import { ShaderBase } from "../../../src/js/shader";
@@ -20,9 +27,9 @@ import tonemappingShader from "./shaders/tonemapping.glsl";
 import shaderFunctions from "./shaders/functions.glsl";
 
 // @ts-ignore
-import VERTMin from "./vert.min.vert";
+import VERT_MIN from "./vert.min.vert";
 // @ts-ignore
-import FRAGMin from "./frag.min.frag";
+import FRAG_MIN from "./frag.min.frag";
 
 function completeShaderSrc(sources: Map<string, string>) {
   for (let [key, src] of sources) {
@@ -85,7 +92,7 @@ function getDebugDefines() {
   return [...defines, `DEBUG ${views[0]}`];
 }
 
-export class PBRShader0 extends ShaderBase {
+export class PBRShaderDebug extends ShaderBase {
   readonly vertexPosition: GLint;
   readonly vertexColor: GLint;
   readonly vertexNormal: GLint;
@@ -128,7 +135,7 @@ export class PBRShader extends ShaderBase {
   readonly vertexNormal: GLint;
 
   constructor(gl: WebGL2RenderingContext) {
-    super(gl, VERTMin, FRAGMin);
+    super(gl, VERT_MIN, FRAG_MIN);
     this.vertexPosition = this.lookupAttribLocationStrict("a_position");
     this.vertexColor = this.lookupAttribLocationStrict("a_color_0");
     this.vertexNormal = this.lookupAttribLocationStrict("a_normal");

@@ -11,6 +11,7 @@ export declare class iblSampler {
   ggxTextureID: WebGLTexture;
   sheenTextureID: WebGLTexture;
   ggxLutTextureID: WebGLTexture;
+  ggxTextureIDFiltered: WebGLTexture;
   charlieLutTextureID: WebGLTexture;
   mipmapLevels: number;
 }

@@ -85,7 +85,7 @@ export class EnvResources extends Resources {
 export function setTexture(
   gl: WebGL2RenderingContext,
   loc: WebGLUniformLocation,
-  gltf: Resources,
+  resources: Resources,
   textureIdx: number,
   texSlot: number,
   name = ""
@@ -95,26 +95,26 @@ export function setTexture(
     return false;
   }
 
-  let gltfTex = gltf.textures[textureIdx];
+  let glTex = resources.textures[textureIdx];
 
-  if (gltfTex == undefined) {
+  if (glTex == undefined) {
     console.warn("Texture is undefined: " + textureIdx);
     return false;
   }
 
-  const image = gltf.images[gltfTex.source];
+  const image = resources.images[glTex.source];
   if (image == undefined) {
-    console.warn("Image is undefined for texture: " + gltfTex.source);
+    console.warn("Image is undefined for texture: " + glTex.source);
     return false;
   }
 
-  if (gltfTex.glTexture == undefined) {
-    gltfTex.glTexture = image.image;
+  if (glTex.glTexture == undefined) {
+    glTex.glTexture = image.image;
   }
 
   // ===== bind =====
   gl.activeTexture(gl.TEXTURE0 + texSlot);
-  gl.bindTexture(gltfTex.type, gltfTex.glTexture);
+  gl.bindTexture(glTex.type, glTex.glTexture);
   gl.uniform1i(loc, texSlot);
   // ================
 
@@ -171,7 +171,7 @@ async function _loadEnvironmentFromPanorama(gl: WebGL2RenderingContext, imageHDR
 
   // Specular (specularEnvMap = 1)
   environment.samplers.push(getSampler(gl.LINEAR, gl.LINEAR_MIPMAP_LINEAR, gl.CLAMP_TO_EDGE, gl.CLAMP_TO_EDGE));
-  environment.images.push(getImage(gl.TEXTURE_CUBE_MAP, environmentFiltering.ggxTextureID));
+  environment.images.push(getImage(gl.TEXTURE_CUBE_MAP, environmentFiltering.ggxTextureIDFiltered));
   environment.textures.push(getTexture(1, 1, gl.TEXTURE_CUBE_MAP));
 
   // Sheen (sheenEnvMap = 2)

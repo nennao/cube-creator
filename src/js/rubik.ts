@@ -1319,7 +1319,10 @@ export class Rubik {
   private reset() {
     this.rotationQueue = [];
     this.scrambling = false;
+    this.solving = false;
     this.blocks = this.createBlocks();
+    this.updateButtonCount("scramble");
+    this.updateButtonCount("solve");
     this.triggerRedraw();
   }
 
