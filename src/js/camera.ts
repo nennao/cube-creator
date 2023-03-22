@@ -15,7 +15,8 @@ export class Camera {
   readonly projectionMatrix = mat4.create();
   readonly viewMatrix = mat4.create();
 
-  distance = 15;
+  private readonly initialDistance = 15;
+  private distance = 15;
   angleX = 0;
   angleY = 0;
   position: vec3 = [0.0, 0.0, this.distance];
@@ -52,9 +53,13 @@ export class Camera {
     this.angleY = clamp(this.angleY, -90, 90);
   }
 
-  reset() {
+  resetAngle() {
     this.angleX = 0;
     this.angleY = 0;
+  }
+
+  resetDist() {
+    this.distance = this.initialDistance;
   }
 
   get watcher() {

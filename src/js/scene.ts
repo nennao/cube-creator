@@ -1,6 +1,8 @@
 import { Camera } from "./camera";
 import { SimpleShader } from "./shader";
 import { Rubik } from "./rubik";
+import { ConfigUIHandler, CubeUIHandler } from "./rubik/uiHandlers";
+
 import { EnvironmentRenderer } from "../../lib/pbr/renderer/environment_renderer";
 import { handleButtonById, handleFpsDisplay, handleInputById, targetListener } from "./utils";
 import { PBRShader } from "../../lib/pbr/renderer/pbr_shader";
@@ -24,6 +26,8 @@ export class Scene {
   private mouse = { x: 0, y: 0 };
 
   private readonly cube: Rubik;
+  private readonly cubeHandler: CubeUIHandler;
+  private readonly configHandler: ConfigUIHandler;
 
   materialsLoaded = false;
   environmentLoaded = false;
@@ -49,6 +53,12 @@ export class Scene {
     this.handleInputEvents();
 
     this.cube = new Rubik(gl, this);
+    this.configHandler = new ConfigUIHandler(this.cube, this);
+    this.cubeHandler = new CubeUIHandler(this.cube, this);
+  }
+
+  getCurrentSliceMoveDetails() {
+    return this.cubeHandler.getCurrentSliceMoveDetails();
   }
 
   initGL() {
@@ -60,8 +70,9 @@ export class Scene {
   }
 
   resetCam() {
+    this.camera.resetDist();
     if (this.moveCamera) {
-      this.camera.reset();
+      this.camera.resetAngle();
     } else {
       this.cube.resetCam();
     }
@@ -111,14 +122,14 @@ export class Scene {
       const { clientX: x, clientY: y } = e;
       const { x: x0, y: y0 } = this.mouse0;
       this.mouse = { x, y };
-      this.cube.handleMousemoveBlock(x, y, x0, y0);
+      this.cubeHandler.handleMousemoveBlock(x, y, x0, y0);
     };
 
     const mouseupBlockHandler = (e: PointerEvent) => {
       if (this.pointerEvents.activeId != e.pointerId) {
         return;
       }
-      this.cube.cleanupMousemoveBlock();
+      this.cubeHandler.cleanupMousemoveBlock();
       window.removeEventListener("pointermove", mousemoveBlockHandler);
       window.removeEventListener("pointerup", mouseupBlockHandler);
       window.removeEventListener("pointercancel", mouseupBlockHandler);
@@ -138,7 +149,7 @@ export class Scene {
       }
       this.pointerEvents.cache.push(e);
 
-      if (this.pointerEvents.cache.length == 2 && !this.cube.manualBlockMoving) {
+      if (this.pointerEvents.cache.length == 2 && !this.cubeHandler.manualBlockMoving) {
         window.addEventListener("pointermove", mousemoveZoomHandler);
         window.addEventListener("pointerup", mouseupZoomHandler);
         window.addEventListener("pointercancel", mouseupZoomHandler);
@@ -147,7 +158,7 @@ export class Scene {
         if (e.buttons == 1) {
           this.mouse0 = { x: e.clientX, y: e.clientY };
           this.mouse = { x: e.clientX, y: e.clientY };
-          const blockClicked = this.cube.findClickedBlock(e.clientX, e.clientY);
+          const blockClicked = this.cubeHandler.findClickedBlock(e.clientX, e.clientY);
 
           if (blockClicked) {
             if (!this.cube.rotating) {

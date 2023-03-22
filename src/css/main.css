@@ -241,7 +241,7 @@ input[type="range"]::-moz-range-track {
   padding-bottom: 0.5rem;
 }
 .offcanvas-body {
-  padding: 0.5rem 0 0;
+  padding: 0.5rem 0 4rem;
 }
 .offcanvas-body > div {
   width: 232px;
