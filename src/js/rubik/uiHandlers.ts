@@ -200,6 +200,7 @@ export class ConfigUIHandler {
       this.cube.resetCam();
       this.scene.camera.resetDist();
       this.scene.camera.resetAngle();
+      this.updatePresetSelectUI();
       this.loadConfigFromPreset();
       this.generalUIUpdate({ ...sceneConfigInit }, false);
     });
