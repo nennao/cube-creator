@@ -4,7 +4,7 @@ import { Rubik } from "./rubik";
 import { ConfigUIHandler, CubeUIHandler } from "./rubik/uiHandlers";
 
 import { EnvironmentRenderer } from "../../lib/pbr/renderer/environment_renderer";
-import { handleButtonById, handleFpsDisplay, handleInputById, targetListener } from "./utils";
+import { getElementById, handleButtonById, handleFpsDisplay, handleInputById, targetListener } from "./utils";
 import { PBRShader } from "../../lib/pbr/renderer/pbr_shader";
 
 export class Scene {
@@ -35,6 +35,13 @@ export class Scene {
 
   get ready() {
     return this.environmentLoaded && this.materialsLoaded;
+  }
+
+  resourceLoaded(loaded: "environmentLoaded" | "materialsLoaded") {
+    this[loaded] = true;
+    if (this.ready) {
+      getElementById("spinner").classList.add("hidden");
+    }
   }
 
   constructor(gl: WebGL2RenderingContext, camera: Camera) {

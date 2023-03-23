@@ -34,7 +34,7 @@ class EnvironmentRenderer {
       this.resources = envResources;
       this.scene.initGL();
       this.setBG();
-      this.scene.environmentLoaded = true;
+      this.scene.resourceLoaded("environmentLoaded");
     });
 
     // prettier-ignore

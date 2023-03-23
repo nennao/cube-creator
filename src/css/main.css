@@ -233,6 +233,49 @@ input[type="range"]::-moz-range-track {
   box-shadow: inset 0 0 4px 1px #6c757d;
 }
 
+#spinner {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#spinnerInner {
+  transform-origin: 50% 50%;
+  overflow: hidden;
+  animation: ring-spinner-spin 1.5s linear infinite;
+  border-radius: 32px;
+}
+#spinnerInner::after {
+  mask-image: radial-gradient(24px, transparent 71.875%, white 78.125%);
+  background-image: conic-gradient(#007338, #d9e0e6, #99001a, #00338c, #e6e626, #b34d00, #007338);
+
+  display: block;
+  width: 48px;
+  height: 48px;
+  content: "";
+  animation: ring-spinner-pulse 0.65s cubic-bezier(0.68, 0, 0.74, 0.74) infinite alternate;
+
+  transform-origin: 50% 50%;
+}
+@keyframes ring-spinner-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes ring-spinner-pulse {
+  from {
+    transform: scale(75%);
+  }
+  to {
+    transform: scale(120%);
+  }
+}
+
 #sideMenuButton > button {
   padding: 0.1872rem 0.3125rem;
 }

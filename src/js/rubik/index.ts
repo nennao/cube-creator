@@ -349,7 +349,7 @@ export class Rubik {
 
     loadMaterialResources(gl).then((resources) => {
       this.resources = resources;
-      this.scene.materialsLoaded = true;
+      this.scene.resourceLoaded("materialsLoaded");
       this.scene.environment.setBG();
     });
 
